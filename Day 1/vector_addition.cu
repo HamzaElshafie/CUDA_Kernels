@@ -44,6 +44,19 @@ double measureExecutionTime(Func func)
     return duration.count();
 }
 
+bool compareResults(const float *A, const float *B, int N)
+{
+    for (int i = 0; i < N; i++)
+    {
+        if (fabs(A[i] - B[i]) > 1e-4)
+        {
+            std::cout << "Mismatch at index " << i << ": CPU=" << A[i] << " GPU=" << B[i] << std::endl;
+            return false;
+        }
+    }
+    return true;
+}
+
 int main()
 {
     int N = 1 << 20; // 1 million elements
@@ -65,5 +78,42 @@ int main()
 
     std::cout << "CPU execution time: " << cpu_time << "ms" << '\n';
 
-    
+    // Allocate memory on the device (GPU)
+    float* A_device;
+    float* B_device;
+    float* C_device;
+
+    cudaMalloc((void**)&A_device, size);
+    cudaMalloc((void**)&B_device, size);
+    cudaMalloc((void**)&C_device, size);
+
+    cudaMemcpy(A_device, A_host, size, cudaMemcpyHostToDevice);
+    cudaMemcpy(B_device, B_host, size, cudaMemcpyHostToDevice);
+
+    int threads_per_block = 256;
+    int blocks_per_grid = (N + threads_per_block - 1) / threads_per_block;
+
+    double gpu_time = measureExecutionTime([&]()
+    {
+        vectorAdd<<<blocks_per_grid, threads_per_block>>>(A_device, B_device, C_device, N);
+        cudaDeviceSynchronize();
+    });
+
+    std::cout << "GPU execution time: " << gpu_time << "ms" << '\n';
+
+    cudaMemcpy(C_host_gpu, C_device, size, cudaMemcpyDeviceToHost);
+
+    bool success = compareResults(C_host_cpu, C_host_gpu, N);
+    std::cout << (success ? "CPU and GPU results match!" : "Results mismatch!");
+
+    cudaFree(A_device);
+    cudaFree(B_device);
+    cudaFree(C_device);
+
+    free(A_host);
+    free(B_host);
+    free(C_host_cpu);
+    free(C_host_gpu);
+
+    return 0;
 }
