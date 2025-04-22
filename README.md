@@ -8,3 +8,4 @@ Mentor: https://github.com/hkproj/
 
 - Implemented vector addition on both **CPU** and **GPU** using CUDA  
 - Achieved **26.9× speedup** with CUDA kernel over CPU
+- Started translating the kernel into Triton (in progress, will continue tomorrow)
