@@ -6,11 +6,11 @@
 
 __global__ void matrixAdd(const float* A, const float* B, float* C, int rows, int columns)
 {
-    // get thread row index
+    // Get thread row index
     int row_index = blockIdx.y * blockDim.y + threadIdx.y;
-    // get thread column index
+    // Get thread column index
     int column_index = blockIdx.x * blockDim.x + threadIdx.x;
-    // check out of bounds
+    // Check out of bounds
     if (row_index < rows && column_index < columns)
     {
         int index = row_index * columns + column_index;
