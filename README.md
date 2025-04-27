@@ -16,3 +16,8 @@ Mentor: https://github.com/hkproj/
 - Implemented vector addition again, but using Triton
 - Achieved ~4–8× speedup with Triton kernel over PyTorch CPU operation
 - Read Chapter 2 from 2.1-2.5
+
+## Day 3 – CUDA Matrix Addition kernel
+
+- Implemented vector addition on both **CPU** and **GPU** using CUDA  
+- Achieved ~**100× speedup** with CUDA kernel over CPU
