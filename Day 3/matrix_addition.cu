@@ -20,11 +20,11 @@ __global__ void matrixAdd(const float* A, const float* B, float* C, int rows, in
 
 void matrixAddCPU(const float* A, const float* B, float* C, int rows, int columns)
 {
-    for (int i = 0; i < rows; i++)
+    for (int row_index = 0; row_index < rows; row_index++)
     {
-        for (int j = 0; j < columns; j++)
+        for (int column_index = 0; column_index < columns; column_index++)
         {
-            int index = i * columns + j;
+            int index = row_index * columns + column_index;
             C[index] = A[index] + B[index];
         }
     }
