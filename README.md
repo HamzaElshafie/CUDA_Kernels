@@ -23,6 +23,7 @@ Mentor: https://github.com/hkproj/
 - Achieved ~**100× speedup** with CUDA kernel over CPU
 
 ## Day 4 – N/A
+- Implemented matrix addition in Triton. Completed the kernel wrapper code and made substantial progress on the kernel itself; will continue work tomorrow. Planning to add autotuning and unit tests as well.
 - Finished Chapter 2
 
 
