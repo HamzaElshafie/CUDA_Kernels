@@ -23,7 +23,20 @@ def matrix_add_kernel(
     BLOCK_SIZE_M: tl.constexpr, # block_size_rows
     BLOCK_SIZE_N: tl.constexpr # block_size_columns
     ):
-  pass
+  
+  pid_m = tl.program_id(0) # x
+  pid_n = tl.program_id(1) # y
+
+  row_start = pid_m * BLOCK_SIZE_M
+  column_start = pid_n * BLOCK_SIZE_N
+
+  rows = row_start + tl.arange(0, BLOCK_SIZE_M)
+  columns = column_start + tl.arange(0, BLOCK_SIZE_N)
+
+  offsets_x = rows.unsqueeze(1) * stride_xm + columns.unsqueeze(0) * stride_xn
+  offsets_y = rows.unsqueeze(1) * stride_ym + columns.unsqueeze(0) * stride_yn
+  offsets_o = rows.unsqueeze(1) * stride_om + columns.unsqueeze(1) * stride_on
+
 
 def matrix_add(x, y):
   output = torch.empty_like(x)
