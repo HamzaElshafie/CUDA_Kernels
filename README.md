@@ -22,7 +22,7 @@ Mentor: https://github.com/hkproj/
 - Implemented vector addition on both **CPU** and **GPU** using CUDA  
 - Achieved ~**100× speedup** with CUDA kernel over CPU
 
-## Day 4 – N/A
+## Day 4 – Triton Matrix Addition
 - Implemented matrix addition in Triton. Completed the kernel wrapper code and made substantial progress on the kernel itself; will continue work tomorrow. Planning to add autotuning and unit tests as well.
 - Finished Chapter 2
 
