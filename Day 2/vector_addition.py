@@ -57,7 +57,7 @@ triton_time = (end - start) * 1000
 # Measure PyTorch GPU execution time
 torch.cuda.synchronize()
 start = time.perf_counter()
-p = x + y
+output_torch = x + y
 torch.cuda.synchronize()
 end = time.perf_counter()
 pytorch_time = (end - start) * 1000
