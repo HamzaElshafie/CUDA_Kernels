@@ -26,4 +26,6 @@ Mentor: https://github.com/hkproj/
 - Implemented same matrix addition in Triton. Completed the kernel wrapper code and made substantial progress on the kernel itself; will continue work tomorrow. Planning to add autotuning and unit tests as well.
 - Finished Chapter 2
 
+## Day 5 - TBC
+
 
