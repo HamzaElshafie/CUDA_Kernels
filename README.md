@@ -22,10 +22,8 @@ Mentor: https://github.com/hkproj/
 - Implemented matrix addition on both **CPU** and **GPU** using CUDA (Supports 2D matrices only)
 - Achieved ~**100× speedup** with CUDA kernel over CPU
 
-## Day 4 – Triton Matrix Addition
-- Implemented same matrix addition in Triton. Completed the kernel wrapper code and made substantial progress on the kernel itself; will continue work tomorrow. Planning to add autotuning and unit tests as well.
+## Day 5 & 6 – Triton Matrix Addition
+- Implemented same matrix addition in Triton and ran tests to compare with Pytorch native ops.
 - Finished Chapter 2
-
-## Day 5 - TBC
 
 
