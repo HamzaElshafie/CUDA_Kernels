@@ -33,9 +33,23 @@ def matrix_add_kernel(
   rows = row_start + tl.arange(0, BLOCK_SIZE_M)
   columns = column_start + tl.arange(0, BLOCK_SIZE_N)
 
+  # Compute flat memory offsets for each (row, col) pair in the tile
+  # using broadcasting to generate the full 2D grid of indices
   offsets_x = rows.unsqueeze(1) * stride_xm + columns.unsqueeze(0) * stride_xn
   offsets_y = rows.unsqueeze(1) * stride_ym + columns.unsqueeze(0) * stride_yn
-  offsets_o = rows.unsqueeze(1) * stride_om + columns.unsqueeze(1) * stride_on
+  offsets_o = rows.unsqueeze(1) * stride_om + columns.unsqueeze(0) * stride_on
+
+  # Allow access to elements where both row and column indices are in bounds
+  mask = (rows.unsqueeze(1) < M) & (columns.unsqueeze(0) < N)
+
+  # Load elements of the tiles from DRAM, masking out out-of-bound elements with 0.0
+  x_tile = tl.load(x_ptr + offsets_x, mask=mask, other=0.0)
+  y_tile = tl.load(y_ptr + offsets_y, mask=mask, other=0.0)
+
+  output_tile = x_tile + y_tile
+
+  # Write result back to DRAM
+  tl.store(output_ptr + offsets_o, output_tile, mask=mask)
 
 
 def matrix_add(x, y):
