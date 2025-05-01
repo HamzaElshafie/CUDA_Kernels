@@ -112,3 +112,10 @@ print(f"Triton time:       {triton_time:.3f} ms")
 print(f"PyTorch GPU time:  {pytorch_gpu_time:.3f} ms")
 print(f"PyTorch CPU time:  {pytorch_cpu_time:.3f} ms")
 print(f"Max absolute diff: {max_diff.item():.6e}")
+
+
+# cuda:0
+# Triton time:       3.964 ms
+# PyTorch GPU time:  3.548 ms
+# PyTorch CPU time:  42.756 ms
+# The maximum difference between torch and triton is 0.0

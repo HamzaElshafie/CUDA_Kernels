@@ -138,3 +138,7 @@ int main()
 
     return 0;
 }
+
+// CPU execution time: 349.847 ms
+// GPU execution time : 3.42599 ms 
+// CPU and GPU results match !

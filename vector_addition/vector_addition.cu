@@ -117,3 +117,8 @@ int main()
 
     return 0;
 }
+
+// CPU execution time: 166.674ms
+// Launching kernel with 131072 blocks of 256 threads.
+// GPU execution time: 1.6756ms
+// CPU and GPU results match!

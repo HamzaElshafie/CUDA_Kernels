@@ -73,3 +73,8 @@ print(f"PyTorch GPU execution time: {pytorch_time:.5f}ms")
 print(f"Triton  execution time: {triton_time:.5f}ms")
 print(f'The maximum difference between torch and triton is '
       f'{torch.max(torch.abs(output_torch - output_triton))}')
+
+# PyTorch CPU execution time: 15.63703ms
+# PyTorch GPU execution time: 1.85400ms
+# Triton  execution time: 1.99292ms
+# The maximum difference between torch and triton is 0.0
