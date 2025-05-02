@@ -109,6 +109,7 @@ float measureKernelTime(KernelFunc kernel, dim3 grid, dim3 block, Args... args)
     CUDA_CHECK(cudaEventSynchronize(stop));
     CUDA_CHECK(cudaEventElapsedTime(&elapsed_time, start, stop));
 
+    // Free events
     CUDA_CHECK(cudaEventDestroy(start));
     CUDA_CHECK(cudaEventDestroy(stop));
 
