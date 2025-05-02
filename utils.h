@@ -13,6 +13,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <ctime>
+#include <cmath>
 #include <cuda_runtime.h>
 
 /**
@@ -22,7 +23,7 @@
  * If an error is detected, prints detailed information and terminates the program.
  */
 #define CUDA_CHECK(call) \
-do { \ 
+do { \
     cudaError_t error = call; \
     if (error != cudaSuccess) { \
         std::cerr << "CUDA error at " << __FILE__ << ":" << __LINE__ << " - " \
