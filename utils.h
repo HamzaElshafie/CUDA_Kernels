@@ -15,6 +15,12 @@
 #include <ctime>
 #include <cuda_runtime.h>
 
+/**
+ * @brief CUDA error checking macro
+ *
+ * Evaluates a CUDA runtime call and checks for errors.
+ * If an error is detected, prints detailed information and terminates the program.
+ */
 #define CUDA_CHECK(call) \
 do { \ 
     cudaError_t error = call; \
@@ -25,6 +31,16 @@ do { \
 } \
 }while(0)
 
+/**
+ * @brief Initialise multiple arrays with random values in a specified range
+ *
+ * @param arrays     Array of pointers to initialize
+ * @param num_arrays Number of arrays to initialize
+ * @param size       Number of elements in each array
+ * @param min       Minimum value for random numbers (default: 0.0)
+ * @param max       Maximum value for random numbers (default: 1.0)
+ * @param seed       Seed for random generator, 0 means use time(0) (default: 0)
+ */
 void initialiseArrays(float** arrays, int num_arrays, size_t size, float min=0.0f, float max=1.0f, unsigned int seed=0)
 {
     // Set random seed
@@ -45,6 +61,13 @@ void initialiseArrays(float** arrays, int num_arrays, size_t size, float min=0.0
     }
 }
 
+/**
+ * @brief Measure CPU execution time using std::chrono
+ *
+ * @tparam Func     Function type
+ * @param function  Function or lambda to measure
+ * @return double   Execution time in milliseconds
+ */
 template <typename Function>
 double measureExecutionTime(Function function)
 {
@@ -55,6 +78,17 @@ double measureExecutionTime(Function function)
     return duration.count();
 }
 
+/**
+ * @brief Measure GPU kernel execution time using CUDA events
+ *
+ * @tparam KernelFunc  Kernel function type
+ * @tparam Args        Kernel argument types
+ * @param kernel       Kernel function to measure
+ * @param grid         Grid dimensions
+ * @param block        Block dimensions
+ * @param args         Kernel arguments
+ * @return float       Execution time in milliseconds
+ */
 template <typename KernelFunc, typename... Args>
 float measureKernelTime(KernelFunc kernel, dim3 grid, dim3 block, Args... args)
 {
@@ -81,6 +115,15 @@ float measureKernelTime(KernelFunc kernel, dim3 grid, dim3 block, Args... args)
     return elapsed_time;
 }
 
+/**
+ * @brief Compare results between CPU and GPU outputs
+ *
+ * @param cpu_result  CPU computed results
+ * @param gpu_result  GPU computed results
+ * @param size        Number of elements to compare
+ * @param tolerance   Tolerance for floating-point comparison (default: 1e-5)
+ * @return bool       True if results match within tolerance, false otherwise
+ */
 bool compareResults(const float *cpu_result, const float *gpu_result,
                     size_t size, float tolerance = 1e-5f)
 {
