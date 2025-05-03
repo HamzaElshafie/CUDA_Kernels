@@ -25,7 +25,7 @@ Mentor: https://github.com/hkproj/
 ## Day 5 & 6 – Triton Matrix Addition
 - Implemented same matrix addition in Triton and ran tests to compare with Pytorch native ops.
 - Finished Chapter 2
-- 
+
 ## Day 7 - Utils.h
 - While not a CUDA kernel, today I implemented a reusable utility header file.
 - It includes functions for timing CPU execution and CUDA kernel execution using CUDA events for accurate measurement.
