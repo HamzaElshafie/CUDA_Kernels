@@ -90,8 +90,8 @@ double measureExecutionTime(Function function)
  * @param args         Kernel arguments
  * @return float       Execution time in milliseconds
  */
-template <typename KernelFunc, typename... Args>
-float measureKernelTime(KernelFunc kernel, dim3 grid, dim3 block, Args... args)
+template <typename KernelFunc>
+float measureKernelTime(KernelFunc kernel)
 {
     cudaEvent_t start;
     cudaEvent_t stop;
@@ -103,7 +103,7 @@ float measureKernelTime(KernelFunc kernel, dim3 grid, dim3 block, Args... args)
     // Start stopwatch
     CUDA_CHECK(cudaEventRecord(start));
     // Launch kernel
-    kernel<<<grid, block>>>(args...);
+    kernel();
     // Stop stopwatch
     CUDA_CHECK(cudaEventRecord(stop));
 
