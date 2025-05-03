@@ -35,5 +35,6 @@ Mentor: https://github.com/hkproj/
 - Implemented a CUDA kernel for the ReLU activation function that operates on 2D matrices.
 - Compared the results against a CPU implementation for correctness and performance.
 - Achieved an approximate 168.07× speedup with the CUDA kernel over the CPU version.
+- Read sections 3.1 and 3.2 from chapter 3.
 
 
