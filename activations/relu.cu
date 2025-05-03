@@ -1,25 +1,43 @@
 #include <iostream>
 #include <stdlib.h>
 #include <cuda_runtime.h>
+#include <cmath>
 
 #include <utils.h>
 
 __global__ void ReluKernel(const float* A, float* C, int rows, int columns)
 {
+    // Get thread row index
+    int row_idx = blockIdx.y * blockDim.y + threadIdx.y;
+    // Get thread column index
+    int column_idx = blockIdx.x * blockDim.x + threadIdx.x;
 
+    if (row_idx < rows && column_idx < columns)
+    {
+         int index = row_idx * columns + column_idx;
+         C[index] = fmaxf(0, A[index]);
+    }
 }
 
 void ReluCPU(const float* A, float* C, int rows, int columns)
-{
-
+{   
+    for (int i = 0; i < rows; i++)
+    {
+        for (int j = 0; j < columns; j++)
+        {
+            int index = (i * columns) + j;
+            C[index] = fmaxf(0.0f, A[index]);
+        }
+    }
 }
 
 int main()
 {
-    int num_rows = 1 << 14;
+    int num_rows = 1 << 12;
     int block_size_rows = 32;
-    int num_columns = 1 << 14;
+    int num_columns = 1 << 12;
     int block_size_columns = 32;
+    int num_elements = num_rows * num_columns;
 
     // Calculate memory size required
     const size_t size = num_rows * num_columns * sizeof(float);
@@ -31,7 +49,7 @@ int main()
 
     // Create an array of the arrays to be initialised
     float* arrays[] {A_host};
-    initialiseArrays(arrays, 1, size, min=0.0f, max=100.0f, seed=0);
+    initialiseArrays(arrays, 1, num_elements, -100.0f, 100.0f, 0);
 
     // Measure CPU execution time
     double cpu_time = measureExecutionTime([&](){
@@ -50,14 +68,19 @@ int main()
     CUDA_CHECK(cudaMemcpy(A_device, A_host, size, cudaMemcpyHostToDevice));
 
     int num_blocks_rows = (num_rows + block_size_rows - 1) / block_size_rows;
-    std::cout << "Number of row blocks: " << num_blocks_rows << std::endl;
     int num_block_columns = (num_columns + block_size_columns - 1) / block_size_columns;
-    std::cout << "Number of column blocks: " << num_block_columns << std::endl;
-    dim3 gridDim(num_blocks_rows, num_block_columns, 1);
-    dim3 blockDim(block_size_rows, block_size_columns, 1);
+    dim3 gridDim(num_block_columns, num_blocks_rows, 1);
+    dim3 blockDim(block_size_columns, block_size_rows, 1);
+
+    std::cout << "Grid configuration:" << std::endl;
+    std::cout << "  Number of blocks (columns): " << gridDim.x << std::endl;
+    std::cout << "  Number of blocks (rows): " << gridDim.y << std::endl;
+    std::cout << "  Threads per block (columns): " << blockDim.x << std::endl;
+    std::cout << "  Threads per block (rows): " << blockDim.y << std::endl;
 
     float gpu_time = measureKernelTime([&](){
         ReluKernel<<<gridDim, blockDim>>>(A_device, C_device, num_rows, num_columns);
+        CUDA_CHECK(cudaDeviceSynchronize());
     });
 
     std::cout << "GPU execution time: " << gpu_time << "ms" << std::endl;
@@ -81,3 +104,13 @@ int main()
 
     return 0;
 }
+
+// CPU execution time: 90.4373ms
+// Grid configuration:
+//   Number of blocks (columns): 128
+//   Number of blocks (rows): 128
+//   Threads per block (columns): 32
+//   Threads per block (rows): 32
+// GPU execution time: 0.53808ms
+// Speedup: 168.074x
+// Results match!
