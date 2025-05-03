@@ -64,13 +64,17 @@ int main()
     std::cout << "Speedup: " << cpu_time / gpu_time << "x" << std::endl;
 
     // Copy results back to host
-    CUDA_CHECK(cudaMemcpy(C_host_gpu, C_device, size, cudaMemcpyDeviceToHost));    
+    CUDA_CHECK(cudaMemcpy(C_host_gpu, C_device, size, cudaMemcpyDeviceToHost)); 
+    
+    // Verify results
+    bool results_match = compareResults(C_host_cpu, C_host_gpu, num_rows * num_columns);
+    std::cout << (results_match ? "Results match!" : "Results do not match!") << std::endl;
 
     // Free device memory
     cudaFree(A_device);
     cudaFree(C_device);
 
-       // Free host memory
+    // Free host memory
     free(A_host);
     free(C_host_cpu);
     free(C_host_gpu);
