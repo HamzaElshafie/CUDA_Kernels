@@ -34,7 +34,10 @@ Mentor: https://github.com/hkproj/
 ## Day 8 - CUDA ReLU kernel
 - Implemented a CUDA kernel for the ReLU activation function that operates on 2D matrices.
 - Compared the results against a CPU implementation for correctness and performance.
-- Achieved an approximate 168.07× speedup with the CUDA kernel over the CPU version.
+- Achieved an approximate ~168.07× speedup with the CUDA kernel over the CPU version.
 - Read sections 3.1 and 3.2 from chapter 3.
 
-
+## Day 9 - CUDA Naive matrix multiplication kernel
+-	Implemented a naive CUDA kernel for matrix multiplication and compared its performance against CPU version.
+- The implementation supports both square and non-square matrices, as long as the dimensions are valid for matrix multiplication (i.e., A: M×N, B: N×K).
+- Achieved approximately 2409.27× speedup over the CPU version. Will experiment with shared memory and tiling next to further optimise performance.
