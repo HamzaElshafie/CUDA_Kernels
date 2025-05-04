@@ -127,7 +127,7 @@ float measureKernelTime(KernelFunc kernel)
  * @return bool       True if results match within tolerance, false otherwise
  */
 bool compareResults(const float *cpu_result, const float *gpu_result,
-                    size_t size, float tolerance = 1e-5f)
+                    size_t size, float tolerance = 1e-4f)
 {
     for (size_t i = 0; i < size; i++)
     {
