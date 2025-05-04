@@ -105,6 +105,7 @@ int main()
     return 0;
 }
 
+
 // CPU execution time: 90.4373ms
 // Grid configuration:
 //   Number of blocks (columns): 128
