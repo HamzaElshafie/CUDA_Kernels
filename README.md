@@ -41,3 +41,6 @@ Mentor: https://github.com/hkproj/
 -	Implemented a naive CUDA kernel for matrix multiplication and compared its performance against CPU version.
 - The implementation supports both square and non-square matrices, as long as the dimensions are valid for matrix multiplication (i.e., A: M×N, B: N×K).
 - Achieved approximately 2409.27× speedup over the CPU version. Will experiment with shared memory and tiling next to further optimise performance.
+
+## Day 10 - Reading
+- Read section 4.1 to 4.4 of PMPP.
