@@ -1,124 +1,100 @@
-import torch
 import triton
 import triton.language as tl
+import torch
 import time
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(DEVICE)
 
-@triton.jit
-def matmul_naive_kernel(
-  # Pointers to matrices
-  a_ptr, b_ptr, c_ptr,
-  # Matrix dimensions
-  M, N, K,
-  # Matrix strides
-  stride_am, stride_ak,
-  stride_bk, stride_bn,
-  stride_cm, stride_cn,
-  # Block sizes
-  BLOCK_SIZE_M: tl.constexpr,
-  BLOCK_SIZE_N: tl.constexpr,
-):
-  # Program ID
-  pid_m = tl.program_id(0)  # row
-  pid_n = tl.program_id(1)  # column
-  
-  # Calculate starting indices
-  row_start = pid_m * BLOCK_SIZE_M
-  col_start = pid_n * BLOCK_SIZE_N
-  
-  # Generate row and column indices for this block
-  rows = row_start + tl.arange(0, BLOCK_SIZE_M)
-  cols = col_start + tl.arange(0, BLOCK_SIZE_N)
-  
-  # Create masks for boundary checking
-  row_mask = rows < M
-  col_mask = cols < N
-  mask = row_mask[:, None] & col_mask[None, :]
-  
-  # Initialize accumulator for results
-  c_values = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
-  
-  # Compute output indices (only need to do this once)
-  c_index = rows[:, None] * stride_cm + cols[None, :] * stride_cn
-  
-  # Naive matrix multiplication - similar to your CUDA implementation
-  for k in range(K):
-      # Load one column of A (for current k)
-      a_index = rows * stride_am + k * stride_ak
-      a_values = tl.load(a_ptr + a_index, mask=row_mask, other=0.0)
-      
-      # Load one row of B (for current k)
-      b_index = k * stride_bk + cols * stride_bn
-      b_values = tl.load(b_ptr + b_index, mask=col_mask, other=0.0)
-      
-      # Compute the outer product for this 'k' and accumulate
-      # Use proper broadcasting to keep dimensions consistent
-      c_values += (a_values[:, None] * b_values[None, :])
-  
-  # Write results to memory
-  tl.store(c_ptr + c_index, c_values, mask=mask)
+# torch.manual_seed()
 
-def matmul_naive(a, b):
-  # Check constraints
-  assert a.shape[1] == b.shape[0], "Incompatible dimensions"
-  M, K = a.shape
-  K, N = b.shape
+num_rows_a = 1 << 8 # M
+num_columns_a = 1 << 8 # N
+num_rows_b = 1 << 8 # N
+num_columns_b = 1 << 10 # K
+
+a = torch.rand(num_rows_a, num_columns_a, device=DEVICE)
+b = torch.rand(num_rows_b, num_columns_b, device=DEVICE)
+a_cpu = torch.rand(num_rows_a, num_columns_a, device="cpu")
+b_cpu = torch.rand(num_rows_b, num_columns_b, device="cpu")
+
+@triton.jit
+def matmulKernel(
+    a_ptr, b_ptr, c_ptr, 
+    M, N, K,
+    stride_am, stride_an,
+    stride_bn, stride_bk,
+    stride_cm, stride_ck,
+    BLOCK_SIZE_M: tl.constexpr,
+    BLOCK_SIZE_K: tl.constexpr
+    ):
   
-  # Allocate output
-  c = torch.empty((M, N), device=a.device, dtype=a.dtype)
+  # Get program coordinates
+  pid_m = tl.program_id(0)
+  pid_k = tl.program_id(1)
+
+  row_start = pid_m * BLOCK_SIZE_M
+  column_start = pid_k * BLOCK_SIZE_K
+
+  rows = row_start + tl.arange(0, BLOCK_SIZE_M)
+  columns = column_start + tl.arange(0, BLOCK_SIZE_K)
+
+  # Compute flat memory offsets for each (row, col) pair in the tile
+  offsets_c = rows.expand_dims(1) * stride_cm + rows.expand_dims(0) * stride_ck
+
+  # Define accumulator
+  accumulator = tl.zeros(BLOCK_SIZE_M, BLOCK_SIZE_K)
+
+  # Define mask
+  row_mask = rows < M
+  column_mask = columns < K
+  mask = row_mask.expand_dims(1) & column_mask.expand_dims(0)
+
+  # Calculate offsets
+  offsets_a = rows.expand_dims(1) * stride_am + tl.arange(0, N).expand_dims(0) * stride_a  
+
+
+def matmul(a, b):
+  # Assert shapes and device
+  assert a.shape[1] == b.shape[0], (f"Matrix multiplication requires the number of columns in the first matrix "
+    f"({a.shape[1]}) to match the number of rows in the second matrix ({b.shape[0]}).")
   
-  # Launch kernel with 2D grid
-  grid = lambda meta: (
-      triton.cdiv(M, meta["BLOCK_SIZE_M"]),
-      triton.cdiv(N, meta["BLOCK_SIZE_N"]),
-  )
-  
-  matmul_naive_kernel[grid](
+  # Get matrices dimensions
+  M, N = a.shape
+  K = b.shape[1]
+
+  # Define output tensor
+  c = torch.empty(M, K, device=DEVICE)
+
+  assert a.device == DEVICE and b.device == DEVICE and c.device == DEVICE
+
+  # Define the strides of the tensors
+  stride_am, stride_an = a.stride()
+  stride_bn, stride_bk = b.stride()
+  stride_cm, stride_ck = c.stride()
+
+  # Get grid dimenions
+  grid = lambda meta: (triton.cdiv(M, meta["BLOCK_SIZE_M"]), triton.cdiv(K, meta["BLOCK_SIZE_K"]))
+
+  # Launch grid
+  matmulKernel[grid](
       a, b, c,
-      M, N, K,
-      a.stride(0), a.stride(1),
-      b.stride(0), b.stride(1),
-      c.stride(0), c.stride(1),
+      M, N, K, 
+      stride_am, stride_an,
+      stride_bn, stride_bk,
+      stride_cm, stride_ck,
       BLOCK_SIZE_M=32,
-      BLOCK_SIZE_N=32,
+      BLOCK_SIZE_K=32
   )
-  
+
   return c
 
-# Test the kernel
-def test_matmul():
-  # Create test matrices
-  M, K, N = 256, 256, 1024  # Same as your CUDA example
-  a = torch.rand((M, K), device=DEVICE, dtype=torch.float32)
-  b = torch.rand((K, N), device=DEVICE, dtype=torch.float32)
-  
-  # Warm up and cache kernel
-  _ = matmul_naive(a, b)
-  
-  # Measure Triton execution time
-  torch.cuda.synchronize()
-  start = time.perf_counter()
-  c_triton = matmul_naive(a, b)
-  torch.cuda.synchronize()
-  end = time.perf_counter()
-  triton_time = (end - start) * 1000
-  
-  # Measure PyTorch execution time
-  torch.cuda.synchronize()
-  start = time.perf_counter()
-  c_torch = torch.matmul(a, b)
-  torch.cuda.synchronize()
-  end = time.perf_counter()
-  pytorch_time = (end - start) * 1000
-  
-  # Check correctness
-  assert torch.allclose(c_triton, c_torch, atol=1e-5), "Results don't match!"
-  
-  print(f"Triton naive matmul time: {triton_time:.3f} ms")
-  print(f"PyTorch matmul time: {pytorch_time:.3f} ms")
-  print(f"Max absolute difference: {torch.max(torch.abs(c_triton - c_torch)).item():.6e}")
+# Warmup kernel
 
+# Measure triton kernel execution time
 
-test_matmul()
+# Measure Pytorch GPU execution time
+
+# Measure Pytorch CPU execution time
+
+# Check correctness
