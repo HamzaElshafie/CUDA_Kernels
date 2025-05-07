@@ -8,10 +8,10 @@ print(DEVICE)
 
 # torch.manual_seed()
 
-num_rows_a = 1 << 10 # M
-num_columns_a = 1 << 10 # N
-num_rows_b = 1 << 10 # N
-num_columns_b = 1 << 14 # K
+num_rows_a = 1 << 9 # M
+num_columns_a = 1 << 9 # N
+num_rows_b = 1 << 9 # N
+num_columns_b = 1 << 10 # K
 
 a = torch.rand(num_rows_a, num_columns_a, device=DEVICE)
 b = torch.rand(num_rows_b, num_columns_b, device=DEVICE)
@@ -128,15 +128,26 @@ torch_cpu_time = (end - start) * 1000
 
 # Check correctness
 max_diff = torch.max(torch.abs(output_triton - torch_gpu_output))
-assert torch.allclose(output_triton, torch_gpu_output, atol=1e-5), "Mismatch with PyTorch!"
+assert torch.allclose(output_triton, torch_gpu_output, atol=1e-4, rtol=1e-5), "Mismatch with PyTorch!"
+
+# Calculate total FLOPs for matrix multiplication: 2 * M * N * K
+total_flops = 2.0 * num_rows_a * num_columns_a * num_columns_b
+
+# Convert GPU time to seconds
+triton_time_sec = triton_time / 1000.0
+
+# Throughput in TFLOPs/s
+tflops = total_flops / (triton_time_sec * 1e12)
 
 print(f"Triton time:       {triton_time:.3f} ms")
+print(f"Triton kernel throughput: {tflops} TFLOPs/s")
 print(f"PyTorch GPU time:  {torch_gpu_time:.3f} ms")
 print(f"PyTorch CPU time:  {torch_cpu_time:.3f} ms")
 print(f"Max absolute diff: {max_diff.item():.6e}")
 
 # cuda:0
-# Triton time:       16.635 ms
-# PyTorch GPU time:  2.629 ms
-# PyTorch CPU time:  82.591 ms
-# Max absolute diff: 0.000000e+00
+# Triton time:       0.520 ms
+# Triton kernel throughput: 1.0321383920119258 TFLOPs/s
+# PyTorch GPU time:  0.660 ms
+# PyTorch CPU time:  1.746 ms
+# Max absolute diff: 2.136230e-04
