@@ -5,7 +5,7 @@
 #include <cuda_runtime.h>
 #include <cmath>
 
-#include "utils.h"
+#include <utils.h>
 
 __global__ void matmulKernel(const float* A, const float* B, float* C, int M, int N, int K)
 {
@@ -124,7 +124,7 @@ int main()
     CUDA_CHECK(cudaMemcpy(C_host_gpu, C_device, size_c, cudaMemcpyDeviceToHost));
 
     // Verify results
-    bool results_match = compareResults(C_host_cpu, C_host_gpu, num_rows_a * num_columns_b, 1e-3);
+    bool results_match = compareResults(C_host_cpu, C_host_gpu, num_rows_a * num_columns_b, 1e-4, 1e-5);
     std::cout << (results_match? "Results match!" : "Results do not match!") << std::endl;
 
     // Free device memory
@@ -142,13 +142,13 @@ int main()
     return 0;
 }
 
-// CPU execution time: 1964.54ms
+// CPU execution time: 1938.05ms
 // Grid configuration:
 //   Number of blocks (columns): 32
 //   Number of blocks (rows): 16
 //   Threads per block (columns): 32
 //   Threads per block (rows): 32
-// GPU execution time: 0.408704ms
-// Speedup: 4806.76x
-// Throughput: 1.31359 TFLOPs/s
+// GPU execution time: 0.414464ms
+// Speedup: 4676.03x
+// Throughput: 1.29534 TFLOPs/s
 // Results match!
