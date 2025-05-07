@@ -48,7 +48,7 @@ Mentor: https://github.com/hkproj/
 ## Day 11 - Triton Naive matrix multiplication 
 - Started implementing naive matrix multiplication in Triton.
 - Struggled to grasp the concepts around tiling and outer product accumulation.
-- Found it unintuitive at first compared to the traditional CUDA-style loop over the shared dimension for each output position.
+- Found it unintuitive at first compared to the naive CUDA-style loop over the shared dimension for each output position.
 
 ## Day 12 - Triton Naive matrix multiplication 
 - Completed the naive implementation and got correct results.
