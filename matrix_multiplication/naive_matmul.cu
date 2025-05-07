@@ -108,6 +108,16 @@ int main()
     std::cout << "GPU execution time: " << gpu_time << "ms" << std::endl;
     std::cout << "Speedup: " << cpu_time / gpu_time << "x" << std::endl;
 
+    // Calculate total FLOPs for matrix multiplication: 2 * M * N * K
+    double total_flops = 2.0 * num_rows_a * num_columns_a * num_columns_b;
+
+    // Convert GPU time to seconds
+    double gpu_time_sec = gpu_time / 1000.0;
+    
+    // Throughput in TFLOPs/s
+    double tflops = total_flops / (gpu_time_sec * 1e12);
+    std::cout << "Throughput: " << tflops << " TFLOPs/s" << std::endl;
+
     // Copy result back to host
     CUDA_CHECK(cudaMemcpy(C_host_gpu, C_device, size_c, cudaMemcpyDeviceToHost));
 

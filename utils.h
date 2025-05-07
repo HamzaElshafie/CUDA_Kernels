@@ -118,26 +118,32 @@ float measureKernelTime(KernelFunc kernel)
 }
 
 /**
- * @brief Compare results between CPU and GPU outputs
+ * @brief Compare results between CPU and GPU outputs using absolute and relative tolerance
  *
  * @param cpu_result  CPU computed results
  * @param gpu_result  GPU computed results
  * @param size        Number of elements to compare
- * @param tolerance   Tolerance for floating-point comparison (default: 1e-5)
- * @return bool       True if results match within tolerance, false otherwise
+ * @param atol        Absolute tolerance (default: 1e-4)
+ * @param rtol        Relative tolerance (default: 1e-5)
+ * @return bool       True if results match within tolerances, false otherwise
  */
 bool compareResults(const float *cpu_result, const float *gpu_result,
-                    size_t size, float tolerance = 1e-4f)
+                    size_t size, float atol = 1e-4f, float rtol = 1e-5f)
 {
     for (size_t i = 0; i < size; i++)
     {
-        float diff = fabs(cpu_result[i] - gpu_result[i]);
-        if (diff > tolerance)
+        float a = cpu_result[i];
+        float b = gpu_result[i];
+        float abs_diff = std::fabs(a - b);
+        float rel_diff = abs_diff / std::fmax(std::fabs(a), std::fabs(b));
+
+        if (abs_diff > atol && rel_diff > rtol)
         {
             std::cout << "Mismatch at index " << i
-                      << ": CPU = " << cpu_result[i]
-                      << ", GPU = " << gpu_result[i]
-                      << ", diff = " << diff
+                      << ": CPU = " << a
+                      << ", GPU = " << b
+                      << ", abs diff = " << abs_diff
+                      << ", rel diff = " << rel_diff
                       << std::endl;
             return false;
         }
