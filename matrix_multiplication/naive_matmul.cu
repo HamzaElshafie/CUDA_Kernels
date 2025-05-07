@@ -1,9 +1,11 @@
+%%writefile matrix_addition.cu
+
 #include <iostream>
 #include <stdlib.h>
 #include <cuda_runtime.h>
 #include <cmath>
 
-#include <utils.h>
+#include "utils.h"
 
 __global__ void matmulKernel(const float* A, const float* B, float* C, int M, int N, int K)
 {
@@ -42,9 +44,9 @@ void matmulCPU(const float* A, const float* B, float* C, int M, int N, int K)
 int main()
 {
     // Calculate memory size required
-    int num_rows_a = 1 << 8; // M
-    int num_columns_a = 1 << 8; // N
-    int num_rows_b = 1 << 8; // N
+    int num_rows_a = 1 << 9; // M
+    int num_columns_a = 1 << 9; // N
+    int num_rows_b = 1 << 9; // N
     int num_columns_b = 1 << 10; // K
     int block_size_rows = 32;
     int block_size_columns = 32;
@@ -122,7 +124,7 @@ int main()
     CUDA_CHECK(cudaMemcpy(C_host_gpu, C_device, size_c, cudaMemcpyDeviceToHost));
 
     // Verify results
-    bool results_match = compareResults(C_host_cpu, C_host_gpu, num_rows_a * num_columns_b, 0.25);
+    bool results_match = compareResults(C_host_cpu, C_host_gpu, num_rows_a * num_columns_b, 1e-3);
     std::cout << (results_match? "Results match!" : "Results do not match!") << std::endl;
 
     // Free device memory
@@ -140,12 +142,13 @@ int main()
     return 0;
 }
 
-// CPU execution time: 396.432ms
+// CPU execution time: 1964.54ms
 // Grid configuration:
 //   Number of blocks (columns): 32
-//   Number of blocks (rows): 8
+//   Number of blocks (rows): 16
 //   Threads per block (columns): 32
 //   Threads per block (rows): 32
-// GPU execution time: 0.164544ms
-// Speedup: 2409.27x
+// GPU execution time: 0.408704ms
+// Speedup: 4806.76x
+// Throughput: 1.31359 TFLOPs/s
 // Results match!
