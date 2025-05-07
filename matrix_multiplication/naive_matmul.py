@@ -8,10 +8,10 @@ print(DEVICE)
 
 # torch.manual_seed()
 
-num_rows_a = 1 << 8 # M
-num_columns_a = 1 << 8 # N
-num_rows_b = 1 << 8 # N
-num_columns_b = 1 << 10 # K
+num_rows_a = 1 << 10 # M
+num_columns_a = 1 << 10 # N
+num_rows_b = 1 << 10 # N
+num_columns_b = 1 << 14 # K
 
 a = torch.rand(num_rows_a, num_columns_a, device=DEVICE)
 b = torch.rand(num_rows_b, num_columns_b, device=DEVICE)
@@ -20,14 +20,14 @@ b_cpu = torch.rand(num_rows_b, num_columns_b, device="cpu")
 
 @triton.jit
 def matmulKernel(
-    a_ptr, b_ptr, c_ptr, 
-    M, N, K,
-    stride_am, stride_an,
-    stride_bn, stride_bk,
-    stride_cm, stride_ck,
-    BLOCK_SIZE_M: tl.constexpr,
-    BLOCK_SIZE_K: tl.constexpr
-    ):
+  a_ptr, b_ptr, c_ptr,
+  M, N, K,
+  stride_am, stride_an,
+  stride_bn, stride_bk,
+  stride_cm, stride_ck,
+  BLOCK_SIZE_M: tl.constexpr,
+  BLOCK_SIZE_K: tl.constexpr
+  ):
   
   # Get program coordinates
   pid_m = tl.program_id(0)
@@ -39,26 +39,38 @@ def matmulKernel(
   rows = row_start + tl.arange(0, BLOCK_SIZE_M)
   columns = column_start + tl.arange(0, BLOCK_SIZE_K)
 
-  # Compute flat memory offsets for each (row, col) pair in the tile
-  offsets_c = rows.expand_dims(1) * stride_cm + rows.expand_dims(0) * stride_ck
-
   # Define accumulator
-  accumulator = tl.zeros(BLOCK_SIZE_M, BLOCK_SIZE_K)
+  accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_K), dtype=tl.float32)
 
-  # Define mask
+  # Define masks
   row_mask = rows < M
   column_mask = columns < K
-  mask = row_mask.expand_dims(1) & column_mask.expand_dims(0)
 
-  # Calculate offsets
-  offsets_a = rows.expand_dims(1) * stride_am + tl.arange(0, N).expand_dims(0) * stride_a  
+  # Loop over shared dimension
+  for n in range(N):
+    # Get vertical slice of A, broadcast and mask
+    offsets_a = rows.expand_dims(1) * stride_am + n * stride_an # Shape -> (BLOCK_SIZE_M, 1)
+    a_slice = tl.load(a_ptr + offsets_a, mask=row_mask.expand_dims(1), other=0.0)
+    
+    # Get horizontal slice of B, broadcast and mask
+    offsets_b = n * stride_bn + columns.expand_dims(0) * stride_bk # Shape -> (1, BLOCK_SIZE_K)
+    b_slice = tl.load(b_ptr + offsets_b, mask=column_mask.expand_dims(0), other=0.0)
+
+    # Multiply outer product and add to accumulator
+    accumulator += a_slice * b_slice
+
+  # Compute flat memory offsets for each (row, col) pair in the tile
+  offsets_c = rows.expand_dims(1) * stride_cm + columns.expand_dims(0) * stride_ck
+
+  # store accumulator results to c
+  c_mask = row_mask.expand_dims(1) & column_mask.expand_dims(0)
+  tl.store(c_ptr + offsets_c, accumulator, mask=c_mask)
 
 
 def matmul(a, b):
   # Assert shapes and device
-  assert a.shape[1] == b.shape[0], (f"Matrix multiplication requires the number of columns in the first matrix "
-    f"({a.shape[1]}) to match the number of rows in the second matrix ({b.shape[0]}).")
-  
+  assert a.shape[1] == b.shape[0], "Matrix dimensions do not match"
+
   # Get matrices dimensions
   M, N = a.shape
   K = b.shape[1]
@@ -79,7 +91,7 @@ def matmul(a, b):
   # Launch grid
   matmulKernel[grid](
       a, b, c,
-      M, N, K, 
+      M, N, K,
       stride_am, stride_an,
       stride_bn, stride_bk,
       stride_cm, stride_ck,
@@ -90,11 +102,41 @@ def matmul(a, b):
   return c
 
 # Warmup kernel
+_ = matmul(a, b)
 
 # Measure triton kernel execution time
+torch.cuda.synchronize()
+start = time.perf_counter()
+output_triton = matmul(a, b)
+torch.cuda.synchronize()
+end = time.perf_counter()
+triton_time = (end - start) * 1000
 
 # Measure Pytorch GPU execution time
+torch.cuda.synchronize()
+start = time.perf_counter()
+torch_gpu_output = torch.matmul(a, b)
+torch.cuda.synchronize()
+end = time.perf_counter()
+torch_gpu_time = (end - start) * 1000
 
 # Measure Pytorch CPU execution time
+start = time.perf_counter()
+torch_cpu_output = torch.matmul(a_cpu, b_cpu)
+end = time.perf_counter()
+torch_cpu_time = (end - start) * 1000
 
 # Check correctness
+max_diff = torch.max(torch.abs(output_triton - torch_gpu_output))
+assert torch.allclose(output_triton, torch_gpu_output, atol=1e-5), "Mismatch with PyTorch!"
+
+print(f"Triton time:       {triton_time:.3f} ms")
+print(f"PyTorch GPU time:  {torch_gpu_time:.3f} ms")
+print(f"PyTorch CPU time:  {torch_cpu_time:.3f} ms")
+print(f"Max absolute diff: {max_diff.item():.6e}")
+
+# cuda:0
+# Triton time:       16.635 ms
+# PyTorch GPU time:  2.629 ms
+# PyTorch CPU time:  82.591 ms
+# Max absolute diff: 0.000000e+00
