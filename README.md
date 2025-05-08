@@ -55,5 +55,5 @@ Mentor: https://github.com/hkproj/
 -	Finally understood how partial results are computed and accumulated across iterations using the outer product method.
 -	Learned how to calculate theoretical throughput (TFLOPs/s) and applied it to both the CUDA and Triton kernels.
 -	As expected, the naive kernel likely doesn’t utilise the GPU’s compute capacity efficiently, but current throughput numbers are hard to interpret.
--	Unclear whether the low throughput is due to the naive design, or simply because the problem size is too small to saturate the GPU (I'm guessing the design). 
+-	Unclear whether the low throughput is due to the naive design, or simply because the problem size is too small to saturate the GPU (I'm guessing both). 
 -	Considering adding a plot of matrix size vs throughput in the future to help visualise scaling and determine where performance plateaus.
