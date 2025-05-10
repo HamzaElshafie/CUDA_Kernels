@@ -59,4 +59,4 @@ Mentor: https://github.com/hkproj/
 -	Considering adding a plot of matrix size vs throughput in the future to help visualise scaling and determine where performance plateaus.
 
 ## Day 13 & 14 - Reading
--	Finished chapter 4, section 5.1 and 5.2
+-	Finished chapter 4, section 5.1 and 5.2.
