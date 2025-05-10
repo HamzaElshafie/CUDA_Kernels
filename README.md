@@ -51,9 +51,12 @@ Mentor: https://github.com/hkproj/
 - Found it unintuitive at first compared to the naive CUDA-style loop over the shared dimension for each output position.
 
 ## Day 12 - Triton Naive matrix multiplication 
-- Completed the naive implementation and got correct results.
+- 	Completed the naive implementation and got correct results.
 -	Finally understood how partial results are computed and accumulated across iterations using the outer product method.
 -	Learned how to calculate theoretical throughput (TFLOPs/s) and applied it to both the CUDA and Triton kernels.
 -	As expected, the naive kernel likely doesn’t utilise the GPU’s compute capacity efficiently, but current throughput numbers are hard to interpret.
 -	Unclear whether the low throughput is due to the naive design, or simply because the problem size is too small to saturate the GPU (I'm guessing both). 
 -	Considering adding a plot of matrix size vs throughput in the future to help visualise scaling and determine where performance plateaus.
+
+## Day 13 & 14 - Reading
+-	Finished chapter 4, section 5.1 and 5.2
