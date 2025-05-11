@@ -1,5 +1,3 @@
-%%writefile matrix_addition.cu
-
 #include <iostream>
 #include <stdlib.h>
 #include <cuda_runtime.h>
