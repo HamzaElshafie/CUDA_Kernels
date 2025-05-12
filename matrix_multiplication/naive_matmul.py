@@ -147,8 +147,8 @@ print(f"Max absolute diff: {max_diff.item():.6e}")
 
 
 # cuda:0
-# Triton time:       2.549 ms
-# Triton kernel throughput: 1.6847395933583826 TFLOPs/s
-# PyTorch GPU time:  204.987 ms
-# PyTorch CPU time:  47.192 ms
-# Max absolute diff: 6.103516e-04
+# Triton time:       2.215 ms
+# Triton kernel throughput: 1.939023147430653 TFLOPs/s
+# PyTorch GPU time:  0.865 ms
+# PyTorch CPU time:  12.587 ms
+# Max absolute diff: 5.950928e-04
