@@ -60,3 +60,13 @@ Mentor: https://github.com/hkproj/
 
 ## Day 13 & 14 - Reading
 -	Finished chapter 4, section 5.1 and 5.2.
+-	Learned about CUDA’s compute architecture and the different memory types (global, shared, constant, local, registers).
+-	Understood the tradeoffs between memory types, including latency, scope, and size constraints, and when to prefer one over another for performance.
+  
+## Day 15 – CUDA Tiled Matrix Multiplication
+- Completed the implementation of the tiled CUDA matrix multiplication kernel using shared memory.
+- Compared performance against the previously implemented naive CUDA version.
+-	Achieved ~1.26× speedup over the naive CUDA kernel (from 2.45 ms → 1.95 ms).
+-	Observed an increase in throughput from 1.75 TFLOPs/s (naive) to 2.21 TFLOPs/s (tiled).
+
+
