@@ -8,10 +8,10 @@ print(DEVICE)
 
 # torch.manual_seed()
 
-num_rows_a = 1 << 9 # M
-num_columns_a = 1 << 9 # N
-num_rows_b = 1 << 9 # N
-num_columns_b = 1 << 10 # K
+num_rows_a = 1 << 10 # M
+num_columns_a = 1 << 10 # N
+num_rows_b = 1 << 10 # N
+num_columns_b = 1 << 11 # K
 
 a = torch.rand(num_rows_a, num_columns_a, device=DEVICE)
 b = torch.rand(num_rows_b, num_columns_b, device=DEVICE)
@@ -145,9 +145,10 @@ print(f"PyTorch GPU time:  {torch_gpu_time:.3f} ms")
 print(f"PyTorch CPU time:  {torch_cpu_time:.3f} ms")
 print(f"Max absolute diff: {max_diff.item():.6e}")
 
+
 # cuda:0
-# Triton time:       0.520 ms
-# Triton kernel throughput: 1.0321383920119258 TFLOPs/s
-# PyTorch GPU time:  0.660 ms
-# PyTorch CPU time:  1.746 ms
-# Max absolute diff: 2.136230e-04
+# Triton time:       2.549 ms
+# Triton kernel throughput: 1.6847395933583826 TFLOPs/s
+# PyTorch GPU time:  204.987 ms
+# PyTorch CPU time:  47.192 ms
+# Max absolute diff: 6.103516e-04

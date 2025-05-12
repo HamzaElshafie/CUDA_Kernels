@@ -42,10 +42,10 @@ void matmulCPU(const float* A, const float* B, float* C, int M, int N, int K)
 int main()
 {
     // Calculate memory size required
-    int num_rows_a = 1 << 9; // M
-    int num_columns_a = 1 << 9; // N
-    int num_rows_b = 1 << 9; // N
-    int num_columns_b = 1 << 10; // K
+    int num_rows_a = 1 << 10; // M
+    int num_columns_a = 1 << 10; // N
+    int num_rows_b = 1 << 10; // N
+    int num_columns_b = 1 << 11; // K
     int block_size_rows = 32;
     int block_size_columns = 32;
 
@@ -140,13 +140,19 @@ int main()
     return 0;
 }
 
-// CPU execution time: 1938.05ms
+
+// ptxas info    : 0 bytes gmem
+// ptxas info    : Compiling entry function '_Z12matmulKernelPKfS0_Pfiii' for 'sm_89'
+// ptxas info    : Function properties for _Z12matmulKernelPKfS0_Pfiii
+//     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+// ptxas info    : Used 40 registers, 388 bytes cmem[0]
+// CPU execution time: 15370.4ms
 // Grid configuration:
-//   Number of blocks (columns): 32
-//   Number of blocks (rows): 16
+//   Number of blocks (columns): 64
+//   Number of blocks (rows): 32
 //   Threads per block (columns): 32
 //   Threads per block (rows): 32
-// GPU execution time: 0.414464ms
-// Speedup: 4676.03x
-// Throughput: 1.29534 TFLOPs/s
+// GPU execution time: 2.45258ms
+// Speedup: 6267.04x
+// Throughput: 1.75121 TFLOPs/s
 // Results match!
