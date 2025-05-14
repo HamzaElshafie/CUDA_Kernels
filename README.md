@@ -69,4 +69,14 @@ Mentor: https://github.com/hkproj/
 -	Achieved ~1.26× speedup over the naive CUDA kernel (from 2.45 ms → 1.95 ms).
 -	Observed an increase in throughput from 1.75 TFLOPs/s (naive) to 2.21 TFLOPs/s (tiled).
 
+## Day 16 - CUDA Online Softmax Kernel
+- Learned the difference between the naive softmax algorithm and the online version.
+- The online version fuses the computation of the normalisation factor and row maximum into a single pass, improving performance.
+
+## Day 17 - CUDA Online Softmax with Shared Memory
+- Started implementing the shared memory version of the kernel.
+- Assigned each block to process a row, with threads working on different segments to compute local norms and local maximums.
+- Understood how this approach improves memory coalescing, enabling warps to access contiguous chunks of global memory.
+- Implemented parallel reduction to combine local values into a single global norm and maximum.
+- Watched Lecture 8: *CUDA Performance Checklist* on the GPU Mode YouTube channel.
 
