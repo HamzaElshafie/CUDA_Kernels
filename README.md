@@ -71,12 +71,12 @@ Mentor: https://github.com/hkproj/
 
 ## Day 16 - CUDA Online Softmax Kernel
 - Learned the difference between the naive softmax algorithm and the online version.
-- The online version fuses the computation of the normalisation factor and row maximum into a single pass, improving performance.
+- Implemented the online version, which fuses the computation of the normalisation factor and row maximum into a single pass.
 
 ## Day 17 - CUDA Online Softmax with Shared Memory
-- Started implementing the shared memory version of the kernel.
-- Assigned each block to process a row, with threads working on different segments to compute local norms and local maximums.
-- Understood how this approach improves memory coalescing, enabling warps to access contiguous chunks of global memory.
-- Implemented parallel reduction to combine local values into a single global norm and maximum.
+- Began implementing the shared memory version of the kernel.
+- Assigned each block to process a row, with threads working on different chunks to compute local norms and local maximums.
+- Gained a better understanding of how this improves memory coalescing, allowing warps to access contiguous regions of global memory.
+- Implemented parallel reduction to combine local maximum values into a single global maximum.
 - Watched Lecture 8: *CUDA Performance Checklist* on the GPU Mode YouTube channel.
 
