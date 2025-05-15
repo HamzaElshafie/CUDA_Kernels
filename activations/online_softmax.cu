@@ -33,6 +33,32 @@ __global__ void online_softmax(const float* __restrict__ A, float* __restrict__ 
     }
 }
 
+void online_softmax_cpu(const float* A, float* C, int M, int N) {
+    for (int row = 0; row < M; row++) {
+        // Phase 1: Find the maximum value using the online algorithm
+        float local_max = -INFINITY;
+        float local_norm = 0.0f;
+        
+        for (int col = 0; col < N; col++) {
+            float x = A[row * N + col];
+            if (x > local_max) {
+                local_norm = local_norm * expf(local_max - x) + 1.0f; // Same adjustment as CUDA
+                local_max = x;
+            } else {
+                local_norm += expf(x - local_max);
+            }
+        }
+        
+        float global_max = local_max;
+        float global_norm = local_norm;
+        
+        // Phase 2: Calculate softmax values
+        for (int col = 0; col < N; col++) {
+            C[row * N + col] = expf(A[row * N + col] - global_max) / global_norm;
+        }
+    }
+}
+
 int main()
 {
     // Set matrix and block dimensions
@@ -51,6 +77,9 @@ int main()
     initialiseArrays(a_array, 1, num_rows * num_columns, -100.0f, 100.0f, 0);
 
     // Measure CPU execution time
+    double cpu_time = measureExecutionTime([&](){
+        online_softmax_cpu(A_host, C_host_cpu, num_columns, num_columns);
+    });
 
     // Allocate device memory
     float* A_device;
@@ -80,6 +109,7 @@ int main()
     });
 
     std::cout << "GPU execution time: " << gpu_time << "ms" << std::endl;
+    std::cout << "Speedup: " << cpu_time / gpu_time << "x" << std::endl;
 
     // Calculate throughput
 
@@ -87,6 +117,8 @@ int main()
     CUDA_CHECK(cudaMemcpy(C_host_gpu, C_device, size, cudaMemcpyDeviceToHost));
 
     // Verify results
+    bool results_match = compareResults(C_host_cpu, C_host_gpu, num_rows * num_columns, 1e-4, 1e-5);
+    std::cout << (results_match? "Results match!" : "Results do not match!") << std::endl;
 
     // Free device memory
     CUDA_CHECK(cudaFree(A_device));
