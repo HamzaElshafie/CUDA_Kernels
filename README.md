@@ -80,3 +80,8 @@ Mentor: https://github.com/hkproj/
 - Implemented parallel reduction to combine local maximum values into a single global maximum.
 - Watched Lecture 8: *CUDA Performance Checklist* on the GPU Mode YouTube channel.
 
+## Day 18 - CUDA Online Softmax with Shared Memory
+- Finalised and tested the CUDA online softmax kernel with shared memory.
+- Observed a noticeable improvement in execution time over the version without shared memory.
+
+
