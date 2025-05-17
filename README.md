@@ -4,84 +4,20 @@ This repository is a personal log of my journey through the 100 Days of CUDA cha
 
 Mentor: https://github.com/hkproj/
 
-## Day 1 – CUDA Vector Addition kernel
-
-- Implemented vector addition on both **CPU** and **GPU** using CUDA  
-- Achieved ~**26.9× speedup** with CUDA kernel over CPU
-- Started translating the kernel into Triton (in progress, will continue tomorrow)
-- Read Chapter 1
-
-## Day 2 – Triton Vector Addition kernel
-
-- Implemented vector addition again, but using Triton
-- Achieved ~4–8× speedup with Triton kernel over PyTorch CPU operation
-- Read Chapter 2 from 2.1-2.4
-
-## Day 3 – CUDA Matrix Addition kernel
-
-- Implemented matrix addition on both **CPU** and **GPU** using CUDA (Supports 2D matrices only)
-- Achieved ~**100× speedup** with CUDA kernel over CPU
-
-## Day 5 & 6 – Triton Matrix Addition
-- Implemented same matrix addition in Triton and ran tests to compare with Pytorch native ops.
-- Finished Chapter 2
-
-## Day 7 - Utils.h
-- While not a CUDA kernel, today I implemented a reusable utility header file.
-- It includes functions for timing CPU execution and CUDA kernel execution using CUDA events for accurate measurement.
-- Also added a CUDA_CHECK macro for robust error checking and a function to initialise arrays with random values.
-
-## Day 8 - CUDA ReLU kernel
-- Implemented a CUDA kernel for the ReLU activation function that operates on 2D matrices.
-- Compared the results against a CPU implementation for correctness and performance.
-- Achieved an approximate ~168.07× speedup with the CUDA kernel over the CPU version.
-- Read sections 3.1 and 3.2 from chapter 3.
-
-## Day 9 - CUDA Naive matrix multiplication kernel
--	Implemented a naive CUDA kernel for matrix multiplication and compared its performance against CPU version.
-- The implementation supports both square and non-square matrices, as long as the dimensions are valid for matrix multiplication (i.e., A: M×N, B: N×K).
-- Achieved approximately 2409.27× speedup over the CPU version. Will experiment with shared memory and tiling next to further optimise performance.
-
-## Day 10 - Reading
-- Read section 4.1 to 4.4 of PMPP.
-
-## Day 11 - Triton Naive matrix multiplication 
-- Started implementing naive matrix multiplication in Triton.
-- Struggled to grasp the concepts around tiling and outer product accumulation.
-- Found it unintuitive at first compared to the naive CUDA-style loop over the shared dimension for each output position.
-
-## Day 12 - Triton Naive matrix multiplication 
-- 	Completed the naive implementation and got correct results.
--	Finally understood how partial results are computed and accumulated across iterations using the outer product method.
--	Learned how to calculate theoretical throughput (TFLOPs/s) and applied it to both the CUDA and Triton kernels.
--	As expected, the naive kernel likely doesn’t utilise the GPU’s compute capacity efficiently, but current throughput numbers are hard to interpret.
--	Unclear whether the low throughput is due to the naive design, or simply because the problem size is too small to saturate the GPU (I'm guessing both). 
--	Considering adding a plot of matrix size vs throughput in the future to help visualise scaling and determine where performance plateaus.
-
-## Day 13 & 14 - Reading
--	Finished chapter 4, section 5.1 and 5.2.
--	Learned about CUDA’s compute architecture and the different memory types (global, shared, constant, local, registers).
--	Understood the tradeoffs between memory types, including latency, scope, and size constraints, and when to prefer one over another for performance.
-  
-## Day 15 – CUDA Tiled Matrix Multiplication
-- Completed the implementation of the tiled CUDA matrix multiplication kernel using shared memory.
-- Compared performance against the previously implemented naive CUDA version.
--	Achieved ~1.26× speedup over the naive CUDA kernel (from 2.45 ms → 1.95 ms).
--	Observed an increase in throughput from 1.75 TFLOPs/s (naive) to 2.21 TFLOPs/s (tiled).
-
-## Day 16 - CUDA Online Softmax Kernel
-- Learned the difference between the naive softmax algorithm and the online version.
-- Implemented the online version, which fuses the computation of the normalisation factor and row maximum into a single pass.
-
-## Day 17 - CUDA Online Softmax with Shared Memory
-- Began implementing the shared memory version of the kernel.
-- Assigned each block to process a row, with threads working on different chunks to compute local norms and local maximums.
-- Gained a better understanding of how this improves memory coalescing, allowing warps to access contiguous regions of global memory.
-- Implemented parallel reduction to combine local maximum values into a single global maximum.
-- Watched Lecture 8: *CUDA Performance Checklist* on the GPU Mode YouTube channel.
-
-## Day 18 - CUDA Online Softmax with Shared Memory
-- Finalised and tested the CUDA online softmax kernel with shared memory.
-- Observed a noticeable improvement in execution time over the version without shared memory.
-
-
+| Day        | File / Topic                  | Summary |
+|------------|-------------------------------|---------|
+| 1          | `vector_addition.cu`               | CUDA vector addition on CPU and GPU; ~26.9× speedup. Started Triton version. Read Chapter 1. |
+| 2          | `vector_addition.py`        | Triton vector addition; ~4–8× speedup over PyTorch CPU. Read Chapter 2 (2.1–2.4). |
+| 3          | `matrix_addition.cu`               | CUDA matrix addition (2D); ~100× speedup over CPU. |
+| 5–6        | `matrix_addition.py`        | Triton matrix addition. Compared with PyTorch. Finished Chapter 2. |
+| 7          | `utils.h`                     | Wrote header for timing, error checking, and array initialisation using CUDA events. |
+| 8          | `relu.cu`                     | CUDA ReLU kernel for 2D matrices; ~168.07× speedup over CPU. Read Chapter 3 (3.1–3.2). |
+| 9          | `naive_matmul.cu`             | Naive CUDA matrix multiplication; ~2409.27× speedup. Supports non-square matrices. |
+| 10         | `reading`                     | Read PMPP sections 4.1–4.4. |
+| 11         | `naive_matmul.py`      | Started naive matrix multiplication in Triton. Initial struggle with tiling concepts. |
+| 12         | `naive_matmul.py`      | Completed Triton naive matmul. Understood outer product accumulation. Learned to calculate throughput. |
+| 13–14      | `N/A`                  | Finished Chapter 4 and sections 5.1–5.2. Studied CUDA memory types and tradeoffs. |
+| 15         | `tiled_matmul.cu`             | Tiled CUDA matrix multiplication using shared memory; ~1.26× speedup over naive CUDA. |
+| 16         | `online_softmax.cu`           | Implemented CUDA online softmax kernel. Fused max and normalisation in a single pass. |
+| 17         | `smem_online_softmax.cu`      | Started shared memory version. Used block-per-row layout and reduction. Watched GPU Mode Lecture 8. |
+| 18         | `smem_online_softmax.cu`      | Finalised and tested shared memory version. Observed noticeable execution time improvement. |
