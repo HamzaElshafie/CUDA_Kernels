@@ -9,16 +9,14 @@ __global__ void vectorAdd(const float* A, const float* B, float* C, int N)
     // Element_id (i) = block_id * block_size + thread_id
     int i = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (i < N)
-    {
+    if (i < N) {
         C[i] = A[i] + B[i]; // A[i] will translate to *(A + i)
     }
 }
 
 void vectorAddCPU(const float* A, const float* B, float* C, int N)
 {
-    for (int i = 0; i < N; ++i)
-    {
+    for (int i = 0; i < N; ++i) {
         C[i] = A[i] + B[i];
     }
 }
@@ -27,8 +25,7 @@ void initialiseVectors(float* A, float* B, int N)
 {
     srand(static_cast<unsigned int>(time(0)));
 
-    for (int i = 0; i < N; i++)
-    {
+    for (int i = 0; i < N; i++) {
         A[i] = static_cast<float>(rand()); // divide by RAND_MAX later if you want to normalise values
         B[i] = static_cast<float>(rand());
     }
@@ -48,8 +45,7 @@ bool compareResults(const float *A, const float *B, int N)
 {
     for (int i = 0; i < N; i++)
     {
-        if (fabs(A[i] - B[i]) > 1e-4)
-        {
+        if (fabs(A[i] - B[i]) > 1e-4) {
             std::cout << "Mismatch at index " << i << ": CPU=" << A[i] << " GPU=" << B[i] << std::endl;
             return false;
         }
