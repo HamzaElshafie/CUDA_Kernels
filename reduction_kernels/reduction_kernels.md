@@ -1,4 +1,4 @@
-![sum_reduce excalidraw](https://github.com/user-attachments/assets/07ee5539-cc36-42f6-af04-4a11e7733734)# Reduction kernels: from warp reductions to block reductions
+# Reduction kernels: from warp reductions to block reductions
 
 A **reduction kernel** is a GPU kernel whose job is to combine many input elements into a smaller number of output elements using an associative operator such as sum, max, or min. The simplest example is summation: given an array `a[0..N-1]`, compute a single value `y = sum(a)`. Reductions appear everywhere in ML systems and numerical computing: computing losses, normalisation statistics, softmax denominators, dot products, gradient accumulation, and many other operations all boil down to reductions.
 
@@ -128,3 +128,4 @@ if (tid == 0) {
 Here, tid == 0 ensures exactly one thread per block performs the update, avoiding unnecessary contention. atomicAdd ensures correctness by making the read–modify–write sequence on y atomic, so multiple blocks can accumulate into y without data races.
 
 This approach is straightforward and works well when the number of blocks is not huge. However, when there are many blocks, the atomic can become a bottleneck because all blocks contend for the same memory location. In high performance implementations, a common alternative is a two-pass reduction: first write one block sum per block into an intermediate array, then launch a second kernel to reduce that array. Both approaches compute the same logical result; they differ only in how they trade simplicity for scalability.
+
