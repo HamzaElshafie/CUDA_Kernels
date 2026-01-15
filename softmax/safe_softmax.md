@@ -46,19 +46,22 @@ $$
 Safe softmax adds one extra reduction compared to naive softmax. Conceptually, the steps are:
 
 1. Compute the maximum value:
-   $$
-   m = \max_{j=0}^{N-1} x_j
-   $$
 
-2. Compute the shifted exponentials and their sum:
-   $$
-   \mathrm{expSum} = \sum_{j=0}^{N-1} e^{x_j - m}
-   $$
+$$
+m = \max_{j=0}^{N-1} x_j
+$$
 
-3. Compute the final outputs:
-   $$
-   y_i = \frac{e^{x_i - m}}{\mathrm{expSum}}
-   $$
+3. Compute the shifted exponentials and their sum:
+   
+$$
+\mathrm{expSum} = \sum_{j=0}^{N-1} e^{x_j - m}
+$$
+
+5. Compute the final outputs:
+   
+$$
+y_i = \frac{e^{x_i - m}}{\mathrm{expSum}}
+$$
 
 So safe softmax is still a two pass structure, but the first pass computes a max instead of a sum.
 
@@ -92,11 +95,3 @@ Safe softmax requires:
 
 The extra max reduction is the cost you pay for stability. In practice it is almost always worth it, especially in attention, because attention logits can vary widely and overflow is a real risk.
 
-## Next step: implementing the safe kernel
-
-To implement safe per token softmax, we need two reusable helpers:
-
-- `block_reduce_max_f32` to compute the per block maximum
-- `block_reduce_sum_f32` to compute the per block sum
-
-The rest of the kernel is straightforward: compute the max, shift, exponentiate, sum, and normalise.
