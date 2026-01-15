@@ -44,9 +44,10 @@ Now we process a new chunk and compute:
 
 - the chunk max: $$m_{\text{new}} = \max(\text{chunk})$$
 - the chunk sum relative to its own max:
-  $$
-  l_{\text{new}} = \sum_{\text{chunk}} e^{x - m_{\text{new}}}
-  $$
+  
+$$
+l_{\text{new}} = \sum_{\text{chunk}} e^{x - m_{\text{new}}}
+$$
 
 The combined max is:
 
