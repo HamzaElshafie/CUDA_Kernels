@@ -55,6 +55,17 @@ Steps:
 2. Compute sum of exponentials using reduction to get denominator
 3. Divide each exponential by the denominator (normalise)
 */
+template <int NUM_THREADS = 256>
 __global__ void softmax_f32_per_token(float* A, float* C, int N) {
-    // TODO
+    // thread's global idx
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    // Load value
+    float exp_val = (idx < N) ? expf(A[idx]) : 0.0f;
+    // Warp reduce on expVal to get denominator
+    float exp_sum = block_reduce_sum_f32<NUM_THREADS>(exp_val);
+
+    // Normalise all values and store back 
+    if (idx < N) {
+        C[idx] = exp_val / exp_sum;
+    }
 }
