@@ -65,7 +65,7 @@ and each thread handles one element:
 
 1. Compute the global index for the element this thread owns.
 2. Load `x[idx]` and compute `expVal = exp(x[idx])`.
-3. Reduce `expVal` across the block to get the denominator:
+3. Reduce `expVal` across the block to get the denominator (See the reduction kernels folder for expalantions):
 
 $$
 \mathrm{expSum} = \sum_{j=0}^{N-1} e^{x_j}
