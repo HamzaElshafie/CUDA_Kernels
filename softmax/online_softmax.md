@@ -2,7 +2,7 @@
 
 ## Why online softmax exists
 
-Safe softmax is stable, but it assumes you can compute a row wise max and a row wise normalisation term efficiently:
+Safe softmax is numerically stable, but it relies on being able to compute a **row wise maximum** and a **row wise normalisation term** in one go:
 
 $$
 y_i = \frac{e^{x_i - m}}{\sum_{j=0}^{N-1} e^{x_j - m}}
@@ -10,18 +10,27 @@ y_i = \frac{e^{x_i - m}}{\sum_{j=0}^{N-1} e^{x_j - m}}
 m = \max_{j} x_j
 $$
 
-If the whole softmax row fits inside one CUDA block, we can do this with two block reductions: one for the max and one for the sum. The difficulty appears when the row length `N` is large, for example `KV_LEN` in attention, and the row must be processed in **chunks** because `N` can exceed what a block with at most `1024` threads can cover efficiently.
+If the entire softmax row fits inside a single CUDA block, this is easy to implement using two block reductions:
 
-Online softmax is the standard way to compute the same numerically stable softmax while **streaming over chunks** of the row, maintaining the correct normalisation as you go.
+- one block max reduction to compute $$m$$
+- one block sum reduction to compute $$\sum e^{x_j - m}$$
+
+However, in practice, especially in attention, the row length `N` (for example `KV_LEN`) can be **much larger than 1024**, which is the maximum number of threads per block. This means:
+
+- one block cannot cover the entire row
+- the row must be processed in **chunks (tiles)**
+
+Online softmax exists to solve exactly this problem: computing a **numerically stable softmax while streaming over chunks of a long row**, without needing extra global reductions or multiple kernels.
+
 
 ## The key idea behind online softmax
 
-Online softmax maintains two running quantities while scanning the row:
+Online softmax maintains **two running quantities** while scanning the row:
 
-- a running maximum value, call it $$m$$
-- a running normalisation term, call it $$l$$
+- a running maximum value, denoted $$m$$
+- a running normalisation term, denoted $$l$$
 
-After you have processed some prefix of the row, you want:
+After processing some prefix of the row, these satisfy:
 
 $$
 m = \max(\text{values seen so far})
@@ -31,115 +40,205 @@ $$
 l = \sum_{\text{values seen so far}} e^{x - m}
 $$
 
-When you see a new chunk, the chunk may contain a larger maximum. If the maximum increases, all previously accumulated exponentials must be rescaled so that they are expressed relative to the new maximum. That rescaling is the heart of online softmax.
+The crucial difficulty is that when new values are processed, the maximum may increase. When the maximum increases, **all previously accumulated exponentials must be rescaled** so they remain correct relative to the new maximum.
 
-## The update equations
+That rescaling is the core idea behind online softmax.
 
-Assume you have already processed some prefix of the row and have a running pair $$(m, l)$$.
 
-Now you process a new chunk and compute two chunk local quantities:
+## The online softmax update equations (streaming form)
 
-- chunk max:
-  
-$$
-m_{\text{new}} = \max(\text{chunk})
-$$
+Assume we are processing the row element by element.
 
-- chunk normaliser relative to the chunk max:
-  
-$$
-l_{\text{new}} = \sum_{\text{chunk}} e^{x - m_{\text{new}}}
-$$
+Let:
 
-To merge old and new, first compute the combined max:
+- $$m_{i-1}$$ be the running max after processing elements $$0 \ldots i-1$$
+- $$l_{i-1}$$ be the running normaliser after processing elements $$0 \ldots i-1$$
+
+Now we process a new element $$x_i$$.
+
+### Step 1: update the max
 
 $$
-m' = \max(m, m_{\text{new}})
+m_i = \max(m_{i-1}, x_i)
 $$
 
-Now express both the old sum and the new chunk sum relative to $$m'$$.
-
-The old part rescales by $$e^{m - m'}$$ and the new chunk rescales by $$e^{m_{\text{new}} - m'}$$:
+### Step 2: update the normaliser
 
 $$
-l' = l \cdot e^{m - m'} + l_{\text{new}} \cdot e^{m_{\text{new}} - m'}
+l_i = l_{i-1} \cdot e^{m_{i-1} - m_i} + e^{x_i - m_i}
 $$
 
-This update ensures the running normaliser stays correct even when the maximum changes.
+This equation does two things:
 
-## Logic steps of online softmax
+- rescales the old normaliser if the max increased
+- adds the new element’s contribution relative to the new max
 
-Conceptually, online softmax performs a repeated set of steps over chunks of the row:
-
-1. Initialise the running state:
-   
-$$
-m = -\infty
-$$
-
-$$
-l = 0
-$$
-
-2. For each chunk of the row, compute the chunk local max and sum:
-
-$$
-m_{\text{new}} = \max(\text{chunk})
-$$
-
-$$
-l_{\text{new}} = \sum_{\text{chunk}} e^{x - m_{\text{new}}}
-$$
-
-3. Update the running max and running normaliser using rescaling:
-
-$$
-m' = \max(m, m_{\text{new}})
-$$
-
-$$
-l' = l \cdot e^{m - m'} + l_{\text{new}} \cdot e^{m_{\text{new}} - m'}
-$$
-
-4. Set:
-
-$$
-m \leftarrow m'
-$$
-
-$$
-l \leftarrow l'
-$$
-
-5. After all chunks have been processed, the final stable softmax normalisation is given by the final running values $$m$$ and $$l$$. Each element can be normalised as:
+After processing all elements, the final softmax is:
 
 $$
 y_i = \frac{e^{x_i - m}}{l}
 $$
 
-The important difference from safe softmax is that $$m$$ and $$l$$ are produced incrementally while streaming, rather than requiring the full row to be reduced in one go.
+This is mathematically equivalent to safe softmax, but it is **streamable**.
+
+
+## From streaming to parallel: merging summaries
+
+The equations above describe **sequential streaming**: one element at a time.
+
+On the GPU, we want **parallelism**, so instead of processing one element at a time, we process **groups of elements** and then merge their summaries.
+
+To do this, we generalise the running state into a **summary struct**:
+
+- $$m$$: the maximum of a group
+- $$d$$: the normalisation term for that group
+
+In code, this appears as:
+
+```cpp
+struct MD {
+  float m; // max
+  float d; // normaliser
+};
+```
+
+Each `MD` represents the softmax summary of some subset of elements.
+
+
+## Merging two summaries: the core equation
+
+Suppose we have two summaries:
+
+- **Summary A:** $$(m_a, d_a)$$  
+- **Summary B:** $$(m_b, d_b)$$
+
+Each summary represents the contribution of a subset of elements:
+
+$$
+d_a = \sum_{x \in A} e^{x - m_a}
+\quad\quad
+d_b = \sum_{x \in B} e^{x - m_b}
+$$
+
+We want to merge these into a single summary representing the union $$A \cup B$$.
+
+### Step 1: compute the combined max
+
+$$
+m = \max(m_a, m_b)
+$$
+
+### Step 2: rescale and combine normalisers
+
+Both normalisers must be expressed relative to the new max $$m$$. This gives:
+
+$$
+d = d_a \cdot e^{m_a - m} + d_b \cdot e^{m_b - m}
+$$
+
+This equation is the **direct parallel analogue** of the streaming update equation used in online softmax.
+
+
+## How this appears in the CUDA code
+
+In the warp reduction, each lane holds one `MD` value called `value`, and it fetches another one called `other` using a shuffle instruction.
+
+The code then determines which of the two summaries has the larger maximum and merges them using the equation above.
+
+```cpp
+bool value_bigger = (value.m > other.m);
+MD bigger_m = value_bigger ? value : other;
+MD smaller_m = value_bigger ? other : value;
+```
+
+Then it applies the merge equation:
+
+```cpp
+value.d = smaller_m.d * expf(smaller_m.m - bigger_m.m) + bigger_m.d;
+value.m = bigger_m.m
+```
+
+This matches the math exactly:
+
+- `bigger_m.m` is the combined maximum $$m$$  
+- `bigger_m.d` is already scaled correctly relative to $$m$$  
+- `smaller_m.d * exp(smaller_m.m - bigger_m.m)` rescales the smaller summary so it is expressed relative to $$m$$  
+
+This is **online softmax expressed as a parallel reduction operator**.
+
+
+## Why this works as a warp or block reduction
+
+The merge operation has three key properties:
+
+1. **Associativity**  
+   Summaries can be merged in any order without changing the final result.
+
+2. **Numerical stability**  
+   Exponentials are always taken relative to a local maximum, preventing overflow.
+
+3. **Parallelisability**  
+   Summaries can be reduced using warp shuffles and shared memory just like sums or maxima.
+
+Because of these properties, the same logic works:
+
+- within a warp  
+- across warps inside a block  
+- across tiles in FlashAttention style kernels  
+
+
+## Connecting back to the streaming equations
+
+The streaming update equation:
+
+$$
+l_i = l_{i-1} \cdot e^{m_{i-1} - m_i} + e^{x_i - m_i}
+$$
+
+is simply a **special case** of the merge equation where:
+
+- one summary contains many elements  
+- the other summary contains exactly one element  
+
+In code, a single element is represented as:
+
+```cpp
+val.m = x_i;
+val.d = 1.0f;
+```
+
+because:
+
+$$
+e^{x_i - x_i} = 1
+$$
+
 
 ## GPU mapping for online per token softmax
 
-For a long row, you typically map the work like this:
+Putting it all together:
 
-- The row is processed in tiles (chunks).
-- For each tile, threads compute local quantities needed for $$m_{\text{new}}$$ and $$l_{\text{new}}$$ using warp or block reductions.
-- A running pair $$ (m, l) $$ is updated per row using the update equations above.
-- Normalisation uses the final $$m$$ and $$l$$.
+- Each thread starts with an `MD` representing one element.
+- Warp reductions merge these into per warp summaries.
+- Block reductions merge warp summaries into a block summary.
+- The final summary contains the correct running maximum $$m$$ and normaliser $$l$$ for the entire row or tile.
+- Outputs are normalised using:
 
-In FlashAttention style kernels, online softmax is usually fused into attention so that the softmax weights are never written to global memory. Instead, each tile’s weights are used immediately to update the output.
+$$
+y_i = \frac{e^{x_i - m}}{l}
+$$
 
-## What changes compared to safe softmax
+In FlashAttention, this process is **fused** with the computation of $$QK^T$$ and the multiplication with $$V$$, so softmax weights are never written to global memory. The softmax is applied on the fly while streaming through the data.
 
-Safe softmax for a row is conceptually:
-
-- one reduction to get $$m$$ over the full row
-- one reduction to get $$\sum e^{x - m}$$ over the full row
-- one final normalisation
-
-Online softmax is designed for the case where the row is processed in chunks. Instead of needing a single global max and global sum over the row upfront, it maintains the correct max and normaliser while streaming through tiles, which avoids extra global coordination when a row cannot be handled by one block.
 
 ## Main takeaway
 
-Online softmax computes the same stable result as safe softmax, but it is structured for long softmax rows that must be processed in chunks. The running max and running normaliser update lets you stream over the row while staying numerically stable, which is essential for long sequence attention and for fused kernels like FlashAttention.
+Online softmax is **not a different mathematical operation** from safe softmax. It is the **streaming and mergeable formulation** of the same computation.
+
+The `MD` struct and the warp reduction logic are simply a parallel way of implementing the same recurrence:
+
+- track a running maximum  
+- track a correctly rescaled normaliser  
+- merge summaries instead of individual elements  
+
+This formulation is what makes long sequence attention and fused kernels like FlashAttention possible and efficient.
