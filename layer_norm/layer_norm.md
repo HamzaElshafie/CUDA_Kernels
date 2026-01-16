@@ -58,31 +58,6 @@ This is why **early Transformers used LayerNorm extensively**, including:
 - BERT
 - GPT-2
 
----
-
-## How LayerNorm differs from softmax
-
-LayerNorm and softmax are both normalisation operations, but they normalise very different things:
-
-- **Softmax** normalises values so they form a probability distribution
-- **LayerNorm** normalises values to have zero mean and unit variance
-
-Softmax:
-$$
-\sum_i y_i = 1
-$$
-
-LayerNorm:
-$$
-\frac{1}{N} \sum_i \hat{x}_i = 0
-\quad\text{and}\quad
-\frac{1}{N} \sum_i \hat{x}_i^2 = 1
-$$
-
-There is no exponentiation or probability interpretation in LayerNorm.
-
----
-
 ## Logic steps of layer normalisation
 
 For one input vector of length `N`, LayerNorm conceptually performs:
