@@ -62,10 +62,28 @@ __device__ __forceinline__ float block_reduce_sum_f32(float val) {
 RMS normalisation kernel
 
 Steps:
-1. 
+1. Each thread computes the square of its element
+2. Allocate a SMEM variable for storing rms_term
+3. Perform block sum reduction on the squared values
+4. Caclulate inverse of RMS
+5. Normalise each element
 */
 template <const int NUM_THREADS>
-__global__ void rms_norm_f32(float* x, float* y, float eps, int M, int K) {
-    // TODO
+__global__ void rms_norm_f32(float* x, float* y, float eps, int M, int K, float gamma) {
+    int tid = threadIdx.x;
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    __shared__ float rms_term;
+
+    float val = (idx < M * K) ? x[idx] : 0.0f;
+    float squared_vals = block_reduce_sum_f32<NUM_THREADS>(val * val);
+
+    if (tid == 0) {
+        rms_term = rsqrtf(squared_vals / float(K) + eps);
+    }
+    __syncthreads();
+
+    if (idx < M * K) {
+        y[idx] = val * rms_term * gamma;
+    }
 }
 

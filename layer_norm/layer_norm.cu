@@ -69,7 +69,7 @@ Steps:
 5. Normalise each element & store back
 */
 template <const int NUM_THREADS>
-__global__ void layer_norm_f32(float* x, float* y, float eps, int M, int K) {
+__global__ void layer_norm_f32(float* x, float* y, float eps, int M, int K, float gamma, float beta) {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     float val = (tid < M * K) ? x[tid] : 0.0f;
 
@@ -91,7 +91,7 @@ __global__ void layer_norm_f32(float* x, float* y, float eps, int M, int K) {
     __syncthreads();
     
     if (tid < M * K) {
-        y[tid] = (val - s_mean) * s_variance;
+        y[tid] = ((val - s_mean) * s_variance) * gamma + beta;
     }
 }
 
