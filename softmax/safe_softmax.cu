@@ -86,14 +86,6 @@ max = __shfl_sync(0xffffffff, max, 0);
 return max;
 }
 
-/**
-Softmax per token kernel
-
-Steps:
-1. Exponentiate each element
-2. Compute sum of exponentials using reduction to get denominator
-3. Divide each exponential by the denominator (normalise)
-*/
 template <int NUM_THREADS = 256>
 __global__ void safe_softmax_f32_per_token(float* A, float* C, int N) {
     // thread's global idx
