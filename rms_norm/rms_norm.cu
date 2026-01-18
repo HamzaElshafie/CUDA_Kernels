@@ -12,7 +12,7 @@
 Warp sum reduction helper for f32
 
 Steps:
-1. We loop over a mask which divides in half each time starting from WARP_SIZE / 2
+1. We loop over a mask which divides in half each time starting from kWarpSize / 2
 2. Perform an XOR shuffle sync with the current val and mask
 3. Add the result from the obtained val after XOR shuffle to current argument value
 4. Return val after loop ends
