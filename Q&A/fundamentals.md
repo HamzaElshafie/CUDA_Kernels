@@ -291,3 +291,67 @@ Further micro optimisation yields limited gains. Bigger changes are needed.
 4. Use profiler metrics to confirm
 5. Apply the correct optimisation lever
 6. Validate end to end improvement
+
+
+## 33) What are CUDA Graphs?
+
+**Answer**  
+CUDA Graphs are a way to capture a sequence of GPU operations, such as kernel launches and memory copies, into a graph that can be launched as a single unit.
+
+Instead of launching each kernel individually from the CPU every iteration, the CPU launches the entire graph, greatly reducing launch overhead.
+
+
+## 34) Why do CUDA Graphs improve performance?
+
+**Answer**  
+CUDA Graphs reduce CPU overhead and driver overhead associated with launching many small kernels.
+
+They are especially beneficial when:
+- Kernels are short
+- The same sequence of kernels runs repeatedly
+- Shapes and execution order are stable
+
+In these cases, the GPU can stay busy while the CPU does less work.
+
+## 35) When do CUDA Graphs help the most?
+
+**Answer**  
+CUDA Graphs help most when workloads are:
+- Launch bound rather than compute bound
+- Repetitive across iterations
+- Made of many small kernels, common in ML graphs
+- Using static shapes or a small number of shape variants
+
+Training loops and inference pipelines often benefit.
+
+## 36) When are CUDA Graphs not useful?
+
+**Answer**  
+CUDA Graphs are less useful when:
+- Kernel sequence changes every iteration
+- Shapes are highly dynamic
+- There are many control flow decisions on the CPU
+- Work is dominated by a few large kernels where launch overhead is negligible
+
+
+## 37) How do CUDA Graphs relate to kernel fusion?
+
+**Answer**  
+Kernel fusion reduces the number of kernels by combining work.  
+CUDA Graphs reduce the cost of launching kernels without changing the kernels themselves.
+
+They are complementary:
+- Fusion reduces memory traffic and kernel count
+- CUDA Graphs reduce launch overhead and CPU involvement
+
+## 38) What is the mental model for CUDA Graphs in interviews?
+
+**Answer**  
+Think of CUDA Graphs as “record once, replay many times”.
+
+If the GPU work is repetitive and predictable, capture it and replay it to remove CPU overhead from the critical path.
+
+## 39) How would you explain CUDA Graphs in one sentence?
+
+**Answer**  
+CUDA Graphs batch many GPU operations into a single launch to reduce CPU and driver overhead for repetitive workloads.
