@@ -60,6 +60,9 @@ Achievable FLOPs per second ≤ min(peak compute, peak bandwidth × arithmetic i
 It helps decide where to optimise:
 - If memory bound, reduce bytes or improve memory efficiency
 - If compute bound, improve math pipeline usage or tensor core utilisation
+  
+![Image 26](https://github.com/user-attachments/assets/0afe1d16-b70b-4c73-8fbc-ffa3d34d3a3a)
+
 
 
 ## 7) What is a roofline plot?
