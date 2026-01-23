@@ -14,7 +14,7 @@ P[y, x] =
 N[y + j, x + i] \cdot f[j + r_y, i + r_x]
 $$
 
-**(Honestly, don'f focus too much on the equation you already know what it means conceptually)
+**(Honestly, don'f focus too much on the equation you already know what it means conceptually)**
 
 In Fig. 7.4 we use a $5 \times 5$ filter for simplicity; that is, $r_y = 2$ and $r_x = 2$. In general, the filter does not have to be, but is typically, a square array.
 
