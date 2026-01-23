@@ -1,195 +1,87 @@
 # 1D Convolution on the GPU
 
-## What is 1D convolution
+Convolution is an array operation in which each output data element is a weighted sum of the corresponding input element and a collection of input elements that are centered on it. The weights that are used in the weighted sum calculation are defined by a filter array, commonly referred to as the convolution kernel. Since there is an unfortunate name conflict between the CUDA kernel functions and convolution kernels, we will refer to these filter arrays as convolution filters to avoid confusion.
 
-A 1D convolution produces an output array `y` where each output element is a weighted sum of nearby input elements from `x`.
+Convolution can be performed on input data of different dimensionality: one-dimensional (1D) (e.g., audio), two-dimensional (2D) (e.g., photo), three-dimensional (3D) (e.g., video), and so on. In audio digital signal processing, the input 1D array elements are sampled signal volume over time. That is, the input data element xi is the ith sample of the audio signal volume. A convolution on 1D data, referred to as 1D convolution, is mathematically defined as a function that takes an input data array of n elements [x0, x1, …, xn−1] and a filter array of 2r + 1 elements [f0, f1, …, f2r] and returns an output data array y:
 
-You have:
 
-- Input array:  
-  $$x = [x_0, x_1, \dots, x_{n-1}]$$
+Since the size of the filter is an odd number (, the weighted sum calculation is symmetric around the element that is being calculated. That is, the weighted sum involves  input elements on each side of the position that is being calculated, which is the reason why  is referred to as the radius of the filter.
 
-- Filter (convolution filter) of odd length:  
-  $$f = [f_0, f_1, \dots, f_{2r}]$$
+Fig. 7.1 shows a 1D convolution example in which a five-element (r = 2) convolution filter f is applied to a seven-element input array x. We will follow the C language convention by which x and y elements are indexed from 0 to 6 and f elements are indexed from 0 to 4. Since the filter radius is 2, each output element is calculated as the weighted sum of the corresponding input element, two elements on the left, and two elements on the right.
 
-Here, `r` is the **filter radius**, so the filter length is:
+![Image](https://github.com/user-attachments/assets/4afb9077-710f-4317-8e47-6855f1365503)
 
-$$
-F = 2r + 1
-$$
+For a concrete example, consider computing `y[2]` with a filter radius `r = 2`. That means `y[2]` uses the input values from two positions to the left up to two positions to the right:
 
-The convolution output is:
+- Left edge: `x[2 - 2] = x[0]`
+- Right edge: `x[2 + 2] = x[4]`
 
-$$
-y_i = \sum_{j=0}^{2r} f_j \cdot x_{i - r + j}
-$$
+So `y[2]` is a weighted sum of `x[0]` through `x[4]`.
 
-Equivalent form (often easier to reason about):
+In this example, assume:
 
-$$
-y_i = \sum_{k=-r}^{r} f_{k+r} \cdot x_{i+k}
-$$
+- Input array:
+`x = [8, 2, 5, 4, 1, 7, 3]`
 
-Interpretation:
-- For each output position `i`, you centre the filter at `x[i]`
-- You multiply neighbouring elements by filter weights
-- You sum the products to produce `y[i]`
+- Filter weights:
+`f = [1, 3, 5, 3, 1]`
 
----
+To compute `y[2]`, you multiply each input value by its corresponding filter weight and then sum the products:
 
-## Example
+- `x[0] * f[0]`
+- `x[1] * f[1]`
+- `x[2] * f[2]`
+- `x[3] * f[3]`
+- `x[4] * f[4]`
 
-Let:
+You can also think of this as an inner product between a sliding window of `x` and the filter `f`.
 
-$$
-x = [8, 2, 5, 4, 1, 7, 3]
-$$
+More generally, `y[i]` is the inner product of:
+- the subarray `x[i - r .. i + r]`
+- with the filter `f[0 .. 2r]`
 
-Filter radius:
+For example, `y[3]` is just the same pattern shifted one step to the right. It uses `x[1]` through `x[5]`:
 
-$$
-r = 2
-$$
+- Left edge: `x[3 - 2] = x[1]`
+- Right edge: `x[3 + 2] = x[5]`
 
-Filter:
+So `y[3]` is the weighted sum of `x[1], x[2], x[3], x[4], x[5]` using the same filter weights.
 
-$$
-f = [1, 3, 5, 3, 1]
-$$
+![Image 1](https://github.com/user-attachments/assets/87aff2f7-5477-4467-99a4-0838248edbc4)
 
-Then for `i = 2`:
+Because convolution uses neighbouring elements, we immediately run into **boundary conditions** near the start and end of the input array.
 
-$$
-y_2 = 1\cdot x_0 + 3\cdot x_1 + 5\cdot x_2 + 3\cdot x_3 + 1\cdot x_4
-$$
+For example, when computing `y[1]` with radius `r = 2`, we would normally need the inputs:
 
-$$
-y_2 = 1\cdot 8 + 3\cdot 2 + 5\cdot 5 + 3\cdot 4 + 1\cdot 1 = 52
-$$
+- `x[1 - 2] = x[-1]`
+- `x[1 - 1] = x[0]`
+- `x[1]`
+- `x[1 + 1] = x[2]`
+- `x[1 + 2] = x[3]`
 
-This is the “inner product” view:
-- take a window of `x` of length `2r+1`
-- dot it with the filter `f`
+But `x[-1]` does not exist. So we cannot directly apply the “use 2 elements on each side” rule at the boundary.
 
----
+A common way to handle this is to **pretend the missing elements exist and give them a default value**.  
+In most applications, that default value is **0**. This is what Fig. 7.3 uses.
 
-## Boundary conditions (ghost cells)
+In audio processing, this makes intuitive sense: we can assume the signal is `0` before recording starts and after it ends.
 
-Near the ends of the array, the filter window goes out of bounds.
+So for `y[1]`, we treat the missing `x[-1]` as `0`, and then compute the weighted sum normally using the filter.
 
-For example, for `i = 1` and `r = 2`, you would need:
+![Image 2](https://github.com/user-attachments/assets/b7223cd1-c706-4deb-8d62-0371a51cf6e5)
 
-$$
-x_{-1}
-$$
+The input element that does not exist is shown as a dashed box in Fig. 7.3.
 
-which does not exist.
+Once you see that for `y[1]`, it should be clear that `y[0]` is even “worse”: with radius `r = 2`, the computation for `y[0]` would require two elements to the left:
 
-A common convention is **zero padding**, meaning:
+- `x[-2]`
+- `x[-1]`
 
-$$
-x_k = 0 \quad \text{for any } k < 0 \text{ or } k \ge n
-$$
+Both are missing, and in this example we treat both of them as `0`.
 
-So the formula becomes:
+In the literature, these “missing but assumed” elements are often called **ghost cells**.
 
-$$
-y_i = \sum_{k=-r}^{r} f_{k+r}\cdot \tilde{x}_{i+k}
-$$
+There is an important practical detail here: ghost cells do not only appear because of array boundaries. They also show up when we do **tiling** in parallel code. In that setting, each tile needs a small “halo” region of neighbouring values to compute its boundary outputs. Those halo values behave like ghost cells from the point of view of a tile. The size of that halo can strongly affect the effectiveness and efficiency of tiling.
 
-where:
-
-$$
-\tilde{x}_{t} =
-\begin{cases}
-x_t & 0 \le t < n \\
-0 & \text{otherwise}
-\end{cases}
-$$
-
-Other applications may use different padding rules, e.g. clamp to edge, reflect, wrap, etc, but for interview and most CUDA examples, zero padding is standard.
-
----
-
-## GPU mapping for 1D convolution
-
-### Goal
-
-Compute all `y[i]` in parallel.
-
-### Natural mapping
-
-- One thread computes one output element `y[i]`
-- That thread loads the required neighbourhood of `x`
-- It multiplies by filter weights and accumulates a sum
-
-Thread `i` computes:
-
-$$
-y_i = \sum_{k=-r}^{r} f_{k+r}\cdot \tilde{x}_{i+k}
-$$
-
-### Thread index
-
-In CUDA 1D launch:
-
-$$
-i = \mathrm{blockIdx.x}\cdot \mathrm{blockDim.x} + \mathrm{threadIdx.x}
-$$
-
-So each thread does:
-
-- if `i < n`, compute `y[i]`
-- otherwise do nothing
-
----
-
-## Logic steps of a naive 1D convolution kernel
-
-For each output element `i`:
-
-1. Compute global index `i`
-2. Initialise accumulator:
-
-$$
-\text{acc} \leftarrow 0
-$$
-
-3. For each filter tap `k` from `-r` to `r`:
-   - compute input index:
-
-$$
-t = i + k
-$$
-
-   - if `t` is in bounds, contribute:
-
-$$
-\text{acc} \leftarrow \text{acc} + f_{k+r}\cdot x_t
-$$
-
-   - otherwise treat `x_t = 0` and contribute nothing
-
-4. Write output:
-
-$$
-y_i \leftarrow \text{acc}
-$$
-
----
-
-## What matters for performance (preview)
-
-The naive version is correct but can be inefficient because:
-- many threads read overlapping regions of `x`
-- filter values are reused but may be read repeatedly
-- global memory traffic can dominate
-
-In optimised CUDA versions, we usually:
-- cache a tile of `x` in shared memory (including ghost cells)
-- put the filter in constant memory if it is small and fixed
-- reduce redundant global reads
-
-We will implement the naive kernel first, then optimise.
-
----
+Also, not all applications assume ghost cells are `0`. Other common boundary rules include:
+- **clamp**: use the closest valid edge value (repeat `x[0]` on the left, repeat `x[n-1]` on the right)
