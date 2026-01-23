@@ -4,7 +4,8 @@ For image processing and computer vision, input data is typically represented as
 
 In a 2D convolution the filter `f` is also a 2D array. Its x and y dimensions determine the range of neighbours to be included in the weighted sum calculation. If we assume that the dimension of the filter is $(2r_x + 1)$ in the x dimension and $(2r_y + 1)$ in the y dimension, the calculation of each output element `P` can be expressed as:
 
-**(Pic 1)**
+![Image 3](https://github.com/user-attachments/assets/b408a7a7-9976-44b6-8f0e-6b180a79649b)
+
 
 $$
 P[y, x] =
@@ -17,7 +18,6 @@ In Fig. 7.4 we use a $5 \times 5$ filter for simplicity; that is, $r_y = 2$ and 
 
 To generate an output element, we take the subarray whose centre is at the corresponding location in the input array `N`. We then perform pairwise multiplication between elements of the filter array and those of the image array. For our example the result is shown as the $5 \times 5$ product array below `N` and `P` in Fig. 7.4. The value of the output element is the sum of all elements of the product array.
 
----
 
 ## Worked example: computing $P_{2,2}$
 
@@ -40,7 +40,6 @@ $$
 
 In the numeric example shown in the figure, this corresponds to summing all elements of the $5 \times 5$ product array.
 
----
 
 ## Boundary conditions in 2D convolution
 
@@ -52,4 +51,5 @@ From Fig. 7.5, the calculation of $P_{1,0}$ involves two missing columns and one
 
 These boundary conditions also affect the efficiency of tiling. We will come back to this point soon.
 
-**(Pic 2)**
+![Image 4](https://github.com/user-attachments/assets/4db6ae54-c43f-4cd3-8437-cb953681e3de)
+
