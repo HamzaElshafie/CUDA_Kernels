@@ -1,5 +1,6 @@
-## 2D convolution
+# 2D convolution
 
+# Naive 
 For image processing and computer vision, input data is typically represented as 2D arrays, with pixels in an x–y space. Image convolutions are therefore **2D convolutions**, as illustrated in **Fig. 7.4 (Pic 1)**.
 
 In a 2D convolution the filter `f` is also a 2D array. Its x and y dimensions determine the range of neighbours to be included in the weighted sum calculation. If we assume that the dimension of the filter is $(2r_x + 1)$ in the x dimension and $(2r_y + 1)$ in the y dimension, the calculation of each output element `P` can be expressed as:
@@ -55,7 +56,9 @@ These boundary conditions also affect the efficiency of tiling. We will come bac
 
 ![Image 4](https://github.com/user-attachments/assets/4db6ae54-c43f-4cd3-8437-cb953681e3de)
 
-## Constant memory and caching for 2D convolution
+-----
+
+# Constant memory and caching for 2D convolution
 
 Consider the naive 2D convolution kernel:
 
@@ -203,3 +206,120 @@ This doubles the compute-to-memory ratio compared to the naive version.
 
 While still memory-bound, this is a meaningful improvement and costs very little implementation effort.
 
+----
+
+# Shared memory tiling with halo cells for 2D convolution
+
+Even after placing the filter in constant memory, the kernel is still **memory bound**. Each thread repeatedly loads overlapping input pixels from global memory. The next optimisation step is to reduce this redundancy using **shared memory tiling**.
+
+### Core idea
+
+Instead of every thread independently reading its full neighbourhood from global memory, all threads in a block:
+
+1. **Collaboratively load a tile of the input image into shared memory**
+2. Synchronise to ensure the tile is fully loaded
+3. Compute output elements using the shared tile
+
+This dramatically increases **data reuse** and reduces global memory traffic.
+
+### Output tile vs input tile
+
+In tiled convolution, each thread block computes a **tile of output pixels**.  
+However, to compute those pixels, the block requires a **larger tile of input pixels** that includes halo cells.
+
+If:
+
+- Output tile size = $$T_{out,x} \times T_{out,y}$$  
+- Filter radius = $$r$$
+
+Then:
+
+$$
+\text{Input tile size} = (T_{out,x} + 2r) \times (T_{out,y} + 2r)
+$$
+
+The extra $$2r$$ in each dimension accounts for halo cells needed by output elements near tile edges.
+
+**This is the main difference from tiled matrix multiplication**:
+- GEMM input tiles and output tiles have the same size
+- Convolution input tiles are larger due to halos
+
+![Image 6](https://github.com/user-attachments/assets/bb5acdba-d25c-4a83-8dcf-8f37b1d791e5)
+
+The central region corresponds to the output tile, while the surrounding border represents halo cells.
+
+### Shared memory role
+
+Each block allocates shared memory to store the **entire input tile**, including halos. Once loaded:
+
+- All threads read input pixels from shared memory instead of global memory
+- The same input pixels are reused by multiple threads
+- Global memory is accessed only during tile loading and final output write
+
+This is the same principle used in tiled matrix multiplication, but with additional indexing complexity due to halo regions.
+
+### Thread organisation strategies
+
+Because the input tile is larger than the output tile, thread mapping is less straightforward than GEMM.
+
+There are two common approaches:
+
+#### Strategy A — Block dimensions match input tile
+
+- Each thread loads exactly one input pixel
+- Loading logic is simple
+- Some threads become idle during output computation
+- Slightly less efficient use of compute resources
+
+#### Strategy B — Block dimensions match output tile (more common)
+
+- Each thread computes one output pixel
+- No threads are idle during compute
+- Threads must iterate to load the larger input tile
+- Slightly more complex loading logic
+
+Both strategies are valid; the second usually offers better resource utilisation.
+
+### Why this improves performance
+
+Without tiling:
+- Each output pixel loads many input pixels from global memory
+- Neighboring threads reload the same pixels
+
+With tiling:
+- Each input pixel is loaded once per block
+- Reused by many threads from shared memory
+
+This increases **arithmetic intensity** and reduces the global memory bottleneck.
+
+### Handling boundaries and halo cells
+
+At image boundaries:
+- Some halo elements fall outside the image
+- These are treated as ghost cells (usually zero)
+
+The important optimisation detail:
+
+Boundary checks are performed **only during tile loading**, not inside the inner convolution loops. This minimises control divergence during the heavy compute phase.
+
+### Memory traffic evolution
+
+| Version | Filter source | Input source during compute | Data reuse |
+|--------|----------------|-----------------------------|------------|
+| Naive | Global memory | Global memory | None |
+| + Constant memory | Constant cache | Global memory | Filter reused |
+| + Shared memory tiling | Constant cache | Shared memory | Filter and input reused |
+
+Shared memory tiling removes most redundant global memory loads and is the key to high performance convolution kernels.
+
+---
+
+### Big picture
+
+An optimised 2D convolution kernel uses:
+
+- **Constant memory** for the filter  
+- **Shared memory tiling** for the input  
+- **Halo regions** to support boundary pixels  
+
+This pattern is one of the most important stencil optimisation techniques in CUDA.
