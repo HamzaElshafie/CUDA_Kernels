@@ -1,5 +1,4 @@
-# CUDA Prep
-
+# CUDA 
 
 Useful resources:
 - https://leimao.github.io/blog/Roofline-Performance-Model/
