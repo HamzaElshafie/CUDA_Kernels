@@ -1,6 +1,6 @@
-# Fundamental GPU Performance Q & A (CUDA + ML Infra)
+**NOTE: AI GENERATED**
 
-Simple, accurate explanations of core performance concepts that commonly appear in CUDA and ML infrastructure interviews.
+# Fundamental GPU Performance Q & A (CUDA + ML Infra)
 
 
 ## 1) What is throughput, and how is it different from latency?
