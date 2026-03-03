@@ -2,6 +2,9 @@
 #include "prototype.cuh"
 #include "../common.cuh"
 
+#include <iostream>
+#include <cuda_bf16.h>
+
 using namespace kittens;
 using namespace kittens::prototype;
 using namespace kittens::prototype::lcf;
@@ -131,3 +134,15 @@ struct matmul_template {
         }
     };
 };
+
+template<typename mmt>
+void inner_run(bf16 *d_A, bf16 *d_B, bf16 *d_C, size_t M, size_t N, size_t K, dim3 grid, dim3 block) {
+    using global_layout = typename mmt::layout::global_layout;
+    using globals = typename mmt::layout::globals;
+    global_layout Ag{d_A, nullptr, nullptr, M, K};
+    global_layout Bg{d_B, nullptr, nullptr, K, N};
+    global_layout Cg{d_C, nullptr, nullptr, M, N};
+    globals G{Ag, Bg, Cg};
+    prototype::lcf::kernel<mmt><<<grid, block, MAX_SHARED_MEMORY-1024>>>(G);
+}
+
