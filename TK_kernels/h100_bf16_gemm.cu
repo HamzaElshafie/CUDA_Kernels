@@ -29,11 +29,11 @@ struct matmul_template {
     static constexpr int NUM_CONSUMER_WARPS = M_BLOCK * 4;
     static constexpr int INPUT_PIPE_STAGES = 4;
     static constexpr int PRODUCER_BARRIER_ARRIVALS = 1; // only one lane issues TMA ops, so one arrival
-    // Returns grid dimensions. If PERISISTENT_GRID is true, launch one block per H100 SM (132) and 
+    // Returns grid dimensions. If PERSISTENT_GRID is true, launch one block per H100 SM (132) and 
     // let blocks loop over tiles via task_iter; otherwise launch one block per C tile group (M_BLOCK×N_BLOCK base tiles).
-    template<bool PERISISTENT_GRID=true>
+    template<bool PERSISTENT_GRID=true>
     __host__ static inline dim3 grid(int M, int N, int K) {
-        return dim3(PERISISTENT_GRID ? 132 : (M * N) / (M_BLOCK * N_BLOCK * layout::base_tile::num_elements));
+        return dim3(PERSISTENT_GRID ? 132 : (M * N) / (M_BLOCK * N_BLOCK * layout::base_tile::num_elements));
     }
     // TK's template functions
     __device__ static inline void common_setup(common_setup_args<layout> args) {
@@ -97,6 +97,37 @@ struct matmul_template {
         }
     };
     struct consumer {
-        // Will do tmrw
-    }
-}
+        __device__ static void setup(consumer_setup_args<layout> args) {
+            warpgroup::increase_registers<232>(); // increase registers for consumer
+            kittens::warp::zero(args.state.accum); // initialise accumilator to zero
+        }
+        __device__ static void compute(consumer_compute_args<layout> args) {
+            warpgroup::mma_AB(
+                args.state.accum,
+                args.input.a[warpgroup::groupid()], // A operand: this warpgroup’s 64×64 A tile from shared memory
+                reinterpret_cast<wide_tile&>(args.input.b) // B operand: treat b[0..N_BLOCK-1] as one 64×(64*N_BLOCK) shared slab
+            );
+            warpgroup::mma_async_wait();
+            if (warp::laneid() == 0) {arrive(args.inputs_finished);}  // signal stage is done
+        }
+        __device__ static void finish(consumer_finish_args<layout> args) {
+            warpgroup::store(
+                reinterpret_cast<wide_tile&>(args.finish.c[warpgroup::groupid()]), // this warpgroup’s output row as a 64×(64*N_BLOCK) SMEM slab
+                args.state.accum
+            );
+            warpgroup::sync(warpgroup::groupid()+4); 
+            if (warpgroup::laneid() == 0) {
+                for (int i = 0; i < N_BLOCK; i++) {
+                    tma::store_async(
+                        args.globals.C, 
+                        args.finish.c[warpgroup::groupid()][i],
+                        {args.common.coord.x, args.common.coord.y+i}
+                    );
+                    tma::store_async_read_wait();  // wait until TMA finished reading that SMEM tile
+                }
+            }
+            kittens::warp::zero(args.state.accum);  // reset accumulator for next persistent task
+            if (warp::laneid() == 0) {arrive(args.finish_finished);} // signal finish stage done and reusable
+        }
+    };
+};
