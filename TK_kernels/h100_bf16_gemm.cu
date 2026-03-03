@@ -143,7 +143,7 @@ void inner_run(bf16 *d_A, bf16 *d_B, bf16 *d_C, size_t M, size_t N, size_t K, di
     global_layout Bg{d_B, nullptr, nullptr, K, N};
     global_layout Cg{d_C, nullptr, nullptr, M, N};
     globals G{Ag, Bg, Cg};
-    prototype::lcf::kernel<mmt><<<grid, block, MAX_SHARED_MEMORY-1024>>>(G);
+    prototype::lcf::kernel<mmt><<<grid, block, ::MAX_SHARED_MEMORY-1024>>>(G);
 }
 
 // TK benchmark 
@@ -201,7 +201,7 @@ double run_benchmark(size_t M, size_t N, size_t K, bool ncu = false) {
     CUDACHECK(cudaFuncSetAttribute(
         prototype::lcf::kernel<mmt>,
         cudaFuncAttributeMaxDynamicSharedMemorySize,
-        MAX_SHARED_MEMORY - 1024));
+        ::MAX_SHARED_MEMORY - 1024));
 
     dim3 grid  = mmt::grid(M, N, K);
     dim3 block = kittens::prototype::detail::NUM_THREADS_v<mmt>;
@@ -343,3 +343,81 @@ int main() {
     return 0;
 }
 
+
+
+// ========== ThunderKittens vs cuBLAS  |  BF16 GEMM  |  H100 ==========
+
+
+// ==================== N = 512 ====================
+// --------------------  [TK]  M=512 N=512 K=512  --------------------
+// Block size: 128x256
+// Allocated device memory
+// Initialised matrices on device
+// Computed reference GEMM
+// Average kernel time : 10.4576 us
+// Achieved performance: 25.6689 TFLOPs
+// abs mean:      6.03036
+// abs max:         37.75
+// err mean:  1.19575e-06
+// err max:        0.0625
+// --------------------  [cuBLAS]  M=512 N=512 K=512  --------------------
+// Average kernel time : 8.6944 us
+// Achieved performance: 30.8745 TFLOPs
+//   TK / cuBLAS ratio : 0.831395x
+
+// ==================== N = 1024 ====================
+// --------------------  [TK]  M=1024 N=1024 K=1024  --------------------
+// Block size: 128x256
+// Allocated device memory
+// Initialised matrices on device
+// Computed reference GEMM
+// Average kernel time : 15.84 us
+// Achieved performance: 135.573 TFLOPs
+// abs mean:      8.49961
+// abs max:          56.5
+// err mean:  6.10005e-06
+// err max:          0.25
+// --------------------  [cuBLAS]  M=1024 N=1024 K=1024  --------------------
+// Average kernel time : 8.5216 us
+// Achieved performance: 252.005 TFLOPs
+//   TK / cuBLAS ratio : 0.53798x
+
+// ==================== N = 2048 ====================
+// --------------------  [TK]  M=2048 N=2048 K=2048  --------------------
+// Block size: 128x256
+// Allocated device memory
+// Initialised matrices on device
+// Skipping reference GEMM (matrix too large for naive kernel)
+// Average kernel time : 27.1424 us
+// Achieved performance: 632.953 TFLOPs
+// --------------------  [cuBLAS]  M=2048 N=2048 K=2048  --------------------
+// Average kernel time : 25.904 us
+// Achieved performance: 663.213 TFLOPs
+//   TK / cuBLAS ratio : 0.954374x
+
+// ==================== N = 4096 ====================
+// --------------------  [TK]  M=4096 N=4096 K=4096  --------------------
+// Block size: 128x256
+// Allocated device memory
+// Initialised matrices on device
+// Skipping reference GEMM (matrix too large for naive kernel)
+// Average kernel time : 180.458 us
+// Achieved performance: 761.614 TFLOPs
+// --------------------  [cuBLAS]  M=4096 N=4096 K=4096  --------------------
+// Average kernel time : 173.549 us
+// Achieved performance: 791.933 TFLOPs
+//   TK / cuBLAS ratio : 0.961715x
+
+// ==================== N = 8192 ====================
+// --------------------  [TK]  M=8192 N=8192 K=8192  --------------------
+// Block size: 128x256
+// Allocated device memory
+// Initialised matrices on device
+// Skipping reference GEMM (matrix too large for naive kernel)
+// Average kernel time : 1405.56 us
+// Achieved performance: 782.256 TFLOPs
+// --------------------  [cuBLAS]  M=8192 N=8192 K=8192  --------------------
+// Average kernel time : 1378.2 us
+// Achieved performance: 797.785 TFLOPs
+//   TK / cuBLAS ratio : 0.980535x
+// root@test:~/CUDA_Kernels/TK_kernels# 

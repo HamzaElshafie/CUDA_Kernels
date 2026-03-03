@@ -1,34 +1,57 @@
 # ThunderKittens Setup (H100)
 
-## 1) Clone ThunderKittens
+## 1) Clone repos
 ```bash
+git clone <https://github.com/HamzaElshafie/CUDA_Kernels.git>
 git clone https://github.com/HazyResearch/ThunderKittens.git ~/ThunderKittens
 ```
 
-## 2) Set env vars
+## 2) Install prerequisites
+
+### CMake (required: >= 3.24)
 ```bash
-export THUNDERKITTENS_ROOT=~/ThunderKittens
+apt-get update
+apt-get install -y gpg wget
+wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc | gpg --dearmor -o /usr/share/keyrings/kitware-archive-keyring.gpg
+echo 'deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ jammy main' > /etc/apt/sources.list.d/kitware.list
+apt-get update
+apt-get install -y cmake
+```
+
+### CUDA Toolkit 12.8 (nvcc)
+```bash
+apt-get update
+apt-get install -y wget gpg
+wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
+dpkg -i cuda-keyring_1.1-1_all.deb
+apt-get update
+apt-get install -y cuda-toolkit-12-8
+```
+
+## 3) Set environment
+```bash
 export CUDA_HOME=/usr/local/cuda-12.8
 export PATH=${CUDA_HOME}/bin:${PATH}
 export LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
+export THUNDERKITTENS_ROOT=~/ThunderKittens
 ```
 
-## 3) Build from `TK_kernels`
+## 4) Verify environment
 ```bash
-cd /path/to/your/repo/TK_kernels
-cmake -S . -B build
+nvidia-smi
+nvcc --version
+cmake --version
+```
+
+## 5) Configure and build
+```bash
+cd ~/CUDA_Kernels/TK_kernels
+rm -rf build
+cmake -S . -B build -DCUDAToolkit_ROOT=$CUDA_HOME -DTHUNDERKITTENS_ROOT=$THUNDERKITTENS_ROOT
 cmake --build build -j
 ```
 
-## 4) Run a kernel binary
-Each `.cu` file in `TK_kernels` builds to one executable with the same name.
-
-Example: if you have `hello_tk.cu`, run:
+## 6) Run kernel
 ```bash
-./build/hello_tk
-```
-
-## 5) Rebuild after edits
-```bash
-cmake --build build -j
+./build/h100_bf16_gemm
 ```
