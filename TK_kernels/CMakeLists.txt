@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.24)
 
 project(TKKernels LANGUAGES CXX CUDA)
 
+find_package(CUDAToolkit REQUIRED)
+
 # H100 is SM90.
 set(CMAKE_CUDA_ARCHITECTURES 90)
 
@@ -55,4 +57,5 @@ foreach(src ${TK_CUDA_SOURCES})
     target_compile_options(${target_name} PRIVATE
         $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
     )
+    target_link_libraries(${target_name} PRIVATE CUDA::cublas)
 endforeach()

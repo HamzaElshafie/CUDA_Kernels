@@ -1,6 +1,6 @@
 #include "kittens.cuh"
 #include "prototype.cuh"
-#include "../common.cuh"
+#include "common.cuh"
 
 #include <iostream>
 #include <cuda_bf16.h>
@@ -144,5 +144,202 @@ void inner_run(bf16 *d_A, bf16 *d_B, bf16 *d_C, size_t M, size_t N, size_t K, di
     global_layout Cg{d_C, nullptr, nullptr, M, N};
     globals G{Ag, Bg, Cg};
     prototype::lcf::kernel<mmt><<<grid, block, MAX_SHARED_MEMORY-1024>>>(G);
+}
+
+// TK benchmark 
+
+template<typename mmt>
+double run_benchmark(size_t M, size_t N, size_t K, bool ncu = false) {
+    std::cout << "--------------------  [TK]  M=" << M << " N=" << N << " K=" << K
+              << "  --------------------\n";
+    std::cout << "Block size: " << mmt::M_BLOCK*64 << "x" << mmt::N_BLOCK*64 << "\n";
+
+    sleep_ms(500);
+
+    // Allocate enough buffer groups to exceed the L2 cache
+    int l2_cache_size;
+    CUDACHECK(cudaDeviceGetAttribute(&l2_cache_size, cudaDevAttrL2CacheSize, 0));
+    const size_t arg_size       = 2 * (size_t(M)*K + size_t(N)*K + size_t(M)*N);
+    const size_t ideal_arg_size = size_t(l2_cache_size) * 3;
+    const int    arg_group_count = (arg_size > ideal_arg_size)
+                                       ? 1
+                                       : int(ideal_arg_size / arg_size) + 1;
+
+    std::vector<__nv_bfloat16*> d_A(arg_group_count), d_B(arg_group_count), d_C(arg_group_count);
+    __nv_bfloat16* d_C_ref;
+    for (int i = 0; i < arg_group_count; i++) {
+        CUDACHECK(cudaMalloc(&d_A[i], M*K*sizeof(__nv_bfloat16)));
+        CUDACHECK(cudaMalloc(&d_B[i], K*N*sizeof(__nv_bfloat16)));
+        CUDACHECK(cudaMalloc(&d_C[i], M*N*sizeof(__nv_bfloat16)));
+    }
+    CUDACHECK(cudaMalloc(&d_C_ref, M*N*sizeof(__nv_bfloat16)));
+    std::cout << "Allocated device memory\n";
+
+    uint64_t seed = 42;
+    for (int i = 0; i < arg_group_count; i++) {
+        fill<__nv_bfloat16, FillMode::RANDOM>  (d_A[i], M*K, seed + i*100,     -1.0f, 1.0f);
+        fill<__nv_bfloat16, FillMode::RANDOM>  (d_B[i], K*N, seed + i*100 + 1, -1.0f, 1.0f);
+        fill<__nv_bfloat16, FillMode::CONSTANT>(d_C[i], M*N, 0.0f);
+    }
+    fill<__nv_bfloat16, FillMode::CONSTANT>(d_C_ref, M*N, 0.0f);
+    CUDACHECK(cudaDeviceSynchronize());
+    std::cout << "Initialised matrices on device\n";
+
+    // Reference GEMM (transpose_b=false: B is row-major K×N).
+    // The reference kernel is a naive thread-per-element implementation and is only
+    // practical for small sizes; skip the correctness check for large matrices.
+    const bool do_correctness = (M <= 1024 && N <= 1024 && K <= 1024);
+    if (do_correctness) {
+        reference_gemm<__nv_bfloat16, __nv_bfloat16, false>(d_C_ref, d_A[0], d_B[0], M, N, K);
+        CUDACHECK(cudaDeviceSynchronize());
+        std::cout << "Computed reference GEMM\n";
+    } else {
+        std::cout << "Skipping reference GEMM (matrix too large for naive kernel)\n";
+    }
+
+    // Set dynamic shared memory limit
+    CUDACHECK(cudaFuncSetAttribute(
+        prototype::lcf::kernel<mmt>,
+        cudaFuncAttributeMaxDynamicSharedMemorySize,
+        MAX_SHARED_MEMORY - 1024));
+
+    dim3 grid  = mmt::grid(M, N, K);
+    dim3 block = kittens::prototype::detail::NUM_THREADS_v<mmt>;
+
+    int num_warmups = ncu ? 0 : 5;
+    int num_iters   = ncu ? 1 : 10;
+
+    for (int i = 0; i < num_warmups; i++)
+        inner_run<mmt>(d_A[i % arg_group_count], d_B[i % arg_group_count],
+                       d_C[i % arg_group_count], M, N, K, grid, block);
+
+    cudaEvent_t start, stop;
+    CUDACHECK(cudaEventCreate(&start));
+    CUDACHECK(cudaEventCreate(&stop));
+    CUDACHECK(cudaEventRecord(start));
+    for (int i = 0; i < num_iters; i++)
+        inner_run<mmt>(d_A[i % arg_group_count], d_B[i % arg_group_count],
+                       d_C[i % arg_group_count], M, N, K, grid, block);
+    CUDACHECK(cudaEventRecord(stop));
+    CUDACHECK(cudaEventSynchronize(stop));
+
+    float milliseconds;
+    CUDACHECK(cudaEventElapsedTime(&milliseconds, start, stop));
+    double microseconds = milliseconds * 1000.0 / num_iters;
+    double flops  = 2.0 * M * N * K;
+    double tflops = (flops / microseconds) / 1e6;
+    std::cout << "Average kernel time : " << microseconds << " us\n";
+    std::cout << "Achieved performance: " << tflops << " TFLOPs\n";
+
+    if (do_correctness) check_correctness(d_C[0], d_C_ref, M * N);
+
+    for (int i = 0; i < arg_group_count; i++) {
+        cudaFree(d_A[i]); cudaFree(d_B[i]); cudaFree(d_C[i]);
+    }
+    cudaFree(d_C_ref);
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+    return tflops;
+}
+
+// cuBLAS benchmark
+
+void inner_run_cublas(__nv_bfloat16* A, __nv_bfloat16* B, __nv_bfloat16* C,
+                      size_t M, size_t N, size_t K) {
+    float alpha = 1.0f, beta = 0.0f;
+    // Row-major C = A*B  ↔  col-major C^T = B^T * A^T
+    CUBLASCHECK(cublasGemmEx(get_cublas_handle(),
+        CUBLAS_OP_N, CUBLAS_OP_N,
+        (int)N, (int)M, (int)K,
+        &alpha,
+        B, CUDA_R_16BF, (int)N,
+        A, CUDA_R_16BF, (int)K,
+        &beta,
+        C, CUDA_R_16BF, (int)N,
+        CUBLAS_COMPUTE_32F, CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+}
+
+double run_cublas_benchmark(size_t M, size_t N, size_t K, bool ncu = false) {
+    std::cout << "--------------------  [cuBLAS]  M=" << M << " N=" << N << " K=" << K
+              << "  --------------------\n";
+
+    sleep_ms(500);
+
+    int l2_cache_size;
+    CUDACHECK(cudaDeviceGetAttribute(&l2_cache_size, cudaDevAttrL2CacheSize, 0));
+    const size_t arg_size       = 2 * (size_t(M)*K + size_t(N)*K + size_t(M)*N);
+    const size_t ideal_arg_size = size_t(l2_cache_size) * 3;
+    const int    arg_group_count = (arg_size > ideal_arg_size)
+                                       ? 1
+                                       : int(ideal_arg_size / arg_size) + 1;
+
+    std::vector<__nv_bfloat16*> d_A(arg_group_count), d_B(arg_group_count), d_C(arg_group_count);
+    for (int i = 0; i < arg_group_count; i++) {
+        CUDACHECK(cudaMalloc(&d_A[i], M*K*sizeof(__nv_bfloat16)));
+        CUDACHECK(cudaMalloc(&d_B[i], K*N*sizeof(__nv_bfloat16)));
+        CUDACHECK(cudaMalloc(&d_C[i], M*N*sizeof(__nv_bfloat16)));
+    }
+
+    uint64_t seed = 42;
+    for (int i = 0; i < arg_group_count; i++) {
+        fill<__nv_bfloat16, FillMode::RANDOM>  (d_A[i], M*K, seed + i*100,     -1.0f, 1.0f);
+        fill<__nv_bfloat16, FillMode::RANDOM>  (d_B[i], K*N, seed + i*100 + 1, -1.0f, 1.0f);
+        fill<__nv_bfloat16, FillMode::CONSTANT>(d_C[i], M*N, 0.0f);
+    }
+    CUDACHECK(cudaDeviceSynchronize());
+
+    // Warm-up cuBLAS (first call initialises internal state)
+    get_cublas_handle();
+    int num_warmups = ncu ? 0 : 5;
+    int num_iters   = ncu ? 1 : 10;
+
+    for (int i = 0; i < num_warmups; i++)
+        inner_run_cublas(d_A[i % arg_group_count], d_B[i % arg_group_count],
+                         d_C[i % arg_group_count], M, N, K);
+
+    cudaEvent_t start, stop;
+    CUDACHECK(cudaEventCreate(&start));
+    CUDACHECK(cudaEventCreate(&stop));
+    CUDACHECK(cudaEventRecord(start));
+    for (int i = 0; i < num_iters; i++)
+        inner_run_cublas(d_A[i % arg_group_count], d_B[i % arg_group_count],
+                         d_C[i % arg_group_count], M, N, K);
+    CUDACHECK(cudaEventRecord(stop));
+    CUDACHECK(cudaEventSynchronize(stop));
+
+    float milliseconds;
+    CUDACHECK(cudaEventElapsedTime(&milliseconds, start, stop));
+    double microseconds = milliseconds * 1000.0 / num_iters;
+    double flops  = 2.0 * M * N * K;
+    double tflops = (flops / microseconds) / 1e6;
+    std::cout << "Average kernel time : " << microseconds << " us\n";
+    std::cout << "Achieved performance: " << tflops << " TFLOPs\n";
+
+    for (int i = 0; i < arg_group_count; i++) {
+        cudaFree(d_A[i]); cudaFree(d_B[i]); cudaFree(d_C[i]);
+    }
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+    return tflops;
+}
+
+// Main
+
+int main() {
+    std::cout << "\n========== ThunderKittens vs cuBLAS  |  BF16 GEMM  |  H100 ==========\n\n";
+
+    // Warm up the cuBLAS handle once before the timed loops
+    get_cublas_handle();
+
+    constexpr size_t SIZES[] = {512, 1024, 2048, 4096, 8192};
+
+    for (size_t N : SIZES) {
+        std::cout << "\n==================== N = " << N << " ====================\n";
+        double tk_tflops     = run_benchmark<matmul_template<2,4,8>>(N, N, N);
+        double cublas_tflops = run_cublas_benchmark(N, N, N);
+        std::cout << "  TK / cuBLAS ratio : " << (tk_tflops / cublas_tflops) << "x\n";
+    }
+
+    return 0;
 }
 
