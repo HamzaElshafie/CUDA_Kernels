@@ -9,7 +9,7 @@ using namespace kittens;
 template<int _d_model>
 struct norm_args {
     static constexpr int d_model = _d_model;
-    static constexpr float dropout_p = 0.0f;
+    static constexpr float dropout_p = 0.0f; // FIX: Possible remove from here and just keep as runtime arg
 
     // Three possible ways to represent a 1xD object. LayerNorm fundamentally
     // operates on a token vector, not on a 2D matrix tile, so TK's shared
