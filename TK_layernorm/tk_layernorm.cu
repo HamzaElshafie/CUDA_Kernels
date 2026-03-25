@@ -6,13 +6,15 @@
 
 using namespace kittens;
 
+__device__ __forceinline__ bf16 fp32_to_bf16(float x) { return __float2bfloat16(x); }
+__device__ __forceinline__ float bf16_to_fp32(bf16 x) { return __bfloat162float(x); }
+
 static constexpr int NUM_WORKERS = 2;
 static constexpr int NUM_THREADS = NUM_WORKERS * kittens::WARP_THREADS;
 
 template<int _d_model>
 struct norm_args {
     static constexpr int d_model = _d_model;
-    static constexpr float dropout_p = 0.0f; // FIX: Possible remove from here and just keep as runtime arg
 
     // Three possible ways to represent a 1xD object. LayerNorm fundamentally
     // operates on a token vector, not on a 2D matrix tile, so TK's shared
@@ -39,6 +41,7 @@ struct norm_args {
 
     const int n_tile_size;
     const int n_per_tile;
+    const float eps;
 };
 
 // Kernel is designed around exactly two warps per block.
@@ -79,10 +82,7 @@ layer_norm_tk(const __grid_constant__ norm_args<d_model> g) {
         warp::load(norm_bias_s, g.norm_bias, {0,0,0,0});
         warp::load(norm_weight_s, g.norm_weight, {0,0,0,0});
     }
-
-    bf16 mean = __float2bfloat16(0.0f);
-    bf16 var = __float2bfloat16(0.0f);
-
+    
     // aync token loads 
     warp::load_async(x_s[tic][warp_id], g.x, {batch, 0, seq_start + warp_id, 0});
     warp::load_async(res_s[tic][warp_id], g.residual, {batch, 0, seq_start + warp_id, 0});
@@ -100,5 +100,31 @@ layer_norm_tk(const __grid_constant__ norm_args<d_model> g) {
         }
         load_async_wait();
         __syncwarp();
+
+        // Compute phase
+        warp::add(res_s[tic][warp_id], res_s[tic][warp_id], x_s[tic][warp_id]);
+        warp::store(g.out_residual, res_s[tic][warp_id], {batch, 0, seq_start+curr_idx, 0});
+        __syncwarp();
+
+        bf16 mean = fp32_to_bf16(0.0f);
+        bf16 var  = fp32_to_bf16(0.0f);
+
+        // reductions
+        warp::sum(mean, res_s[tic][warp_id]);
+        mean = mean / fp32_to_bf16(d_model);
+        warp::sub(res_s[tic][warp_id], res_s[tic][warp_id], mean);
+        warp::mul(x_s[tic][warp_id], res_s[tic][warp_id], res_s[tic][warp_id]);
+        warp::sum(var, x_s[tic][warp_id]);
+        var = var / fp32_to_bf16(d_model);
+        var = fp32_to_bf16(sqrt(bf16_to_fp32(var + fp32_to_bf16(g.eps))));
+
+        // Compute norm
+        warp::div(res_s[tic][warp_id], res_s[tic][warp_id], var);
+        warp::mul(res_s[tic][warp_id], res_s[tic][warp_id], norm_weight_s);
+        warp::add(res_s[tic][warp_id], res_s[tic][warp_id], norm_bias_s);
+        __syncwarp();
+
+        // Write output back to gmem
+        warp::store(g.out, res_s[tic][warp_id], {batch, 0, seq_start+curr_idx, 0});
     }
 }
