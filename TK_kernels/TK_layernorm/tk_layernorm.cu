@@ -102,8 +102,7 @@ layer_norm_tk(const __grid_constant__ norm_args<d_model> g) {
             warp::load_async(x_s[toc][warp_id], g.x, {batch, 0, seq_start + next_idx, 0});
             warp::load_async(res_s[toc][warp_id], g.residual, {batch, 0, seq_start + next_idx, 0});
         }
-        // Wait for the current (tic) buffer only — leave the just-issued toc prefetch in flight.
-        // load_async_wait<1>() = cp.async.wait_group 1: blocks until ≤1 batch outstanding.
+        // Wait for the current (tic) buffer only
         load_async_wait<1>();
         __syncwarp();
 
