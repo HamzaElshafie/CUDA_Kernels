@@ -9,8 +9,9 @@ using namespace kittens;
 __device__ __forceinline__ bf16 fp32_to_bf16(float x) { return __float2bfloat16(x); }
 __device__ __forceinline__ float bf16_to_fp32(bf16 x) { return __bfloat162float(x); }
 
-static constexpr int NUM_WORKERS = 2;
-static constexpr int NUM_THREADS = NUM_WORKERS * kittens::WARP_THREADS;
+static constexpr int NUM_WORKERS    = 4;  // warps per block
+static constexpr int GROUPS_PER_TILE = 4;
+static constexpr int NUM_THREADS    = NUM_WORKERS * kittens::WARP_THREADS;
 
 template<int _d_model>
 struct norm_args {
@@ -44,10 +45,12 @@ struct norm_args {
     const float eps;
 };
 
-// Kernel is designed around exactly two warps per block.
-// grid.y moves across batch elements.
-// grid.x moves across sequence chunks, where each block handles two tokens.
-// Each block has two worker warps, and each warp handles one token vector across its full d_model dimension.
+// grid.y  — batch dimension.
+// grid.x  — sequence tiles; each block covers n_per_tile = GROUPS_PER_TILE * NUM_WORKERS tokens.
+// Each block has NUM_WORKERS warps; each warp owns one token slot in shared memory.
+// Within a block, GROUPS_PER_TILE groups of NUM_WORKERS tokens are processed in a double-buffered loop:
+//   - while warp computes on the tic buffer, the toc buffer is prefetched from HBM.
+//   - load_async_wait<1>() waits for tic only, leaving toc in flight.
 template<int d_model>
 __global__ void __launch_bounds__(NUM_THREADS)
 layer_norm_tk(const __grid_constant__ norm_args<d_model> g) {
@@ -56,7 +59,8 @@ layer_norm_tk(const __grid_constant__ norm_args<d_model> g) {
     auto lane = kittens::laneid();
 
     int batch = blockIdx.y;
-    int seq_start = blockIdx.x * NUM_WORKERS;
+    // Each block covers n_per_tile = GROUPS_PER_TILE * NUM_WORKERS tokens.
+    int seq_start = blockIdx.x * g.n_per_tile;
 
     // Allocate dynamic smem. Will hold staging of x, residual, bias, weight
     extern __shared__ alignment_dummy smem[];
@@ -93,12 +97,14 @@ layer_norm_tk(const __grid_constant__ norm_args<d_model> g) {
         int curr_idx = block * NUM_WORKERS + warp_id;
         int next_idx = (block + 1) * NUM_WORKERS + warp_id;
 
-        // Prefetch next token pair
+        // Prefetch next group into the toc (inactive) buffer while we compute on tic.
         if (block < n_blocks - 1) {
             warp::load_async(x_s[toc][warp_id], g.x, {batch, 0, seq_start + next_idx, 0});
             warp::load_async(res_s[toc][warp_id], g.residual, {batch, 0, seq_start + next_idx, 0});
         }
-        load_async_wait();
+        // Wait for the current (tic) buffer only — leave the just-issued toc prefetch in flight.
+        // load_async_wait<1>() = cp.async.wait_group 1: blocks until ≤1 batch outstanding.
+        load_async_wait<1>();
         __syncwarp();
 
         // Compute phase
@@ -156,11 +162,12 @@ void dispatch_layernorm(
     norm_weight_gl norm_weight_arg{d_norm_weight_bf, 1, 1, 1, D};
     norm_bias_gl norm_bias_arg{d_norm_bias_bf, 1, 1, 1, D};
 
-    constexpr int n_per_tile = NUM_WORKERS;
+    // Each block covers GROUPS_PER_TILE groups of NUM_WORKERS tokens = GROUPS_PER_TILE * NUM_WORKERS tokens.
+    constexpr int n_per_tile = GROUPS_PER_TILE * NUM_WORKERS;
     const int n_tile_size = static_cast<int>(N / n_per_tile);
     args_t g{x_arg, residual_arg, out_arg, out_residual_arg, norm_weight_arg, norm_bias_arg, n_tile_size, n_per_tile, 1e-5f};
 
-    constexpr unsigned long mem_size = 25480;
+    constexpr unsigned long mem_size = 36864;
     cudaError_t attr_err = cudaFuncSetAttribute(
         layer_norm_tk<D>,
         cudaFuncAttributeMaxDynamicSharedMemorySize,
@@ -173,7 +180,6 @@ void dispatch_layernorm(
 
     dim3 grid(n_tile_size, static_cast<unsigned int>(B), 1);
     layer_norm_tk<D><<<grid, NUM_THREADS, mem_size>>>(g);
-    cudaDeviceSynchronize();
 }
 
 #ifdef TK_COMPILE_FUSED_LAYERNORM
@@ -212,7 +218,8 @@ std::tuple<at::Tensor, at::Tensor> fused_layernorm(
     TORCH_CHECK(residual.size(2) == d, "residual last dim must be 1024");
     TORCH_CHECK(norm_weight.size(0) == d, "norm_weight size must be 1024");
     TORCH_CHECK(norm_bias.size(0) == d, "norm_bias size must be 1024");
-    TORCH_CHECK((n % NUM_WORKERS) == 0, "N must be divisible by NUM_WORKERS");
+    constexpr int64_t n_per_tile_check = GROUPS_PER_TILE * NUM_WORKERS;
+    TORCH_CHECK((n % n_per_tile_check) == 0, "N must be divisible by GROUPS_PER_TILE * NUM_WORKERS (", n_per_tile_check, ")");
 
     at::Tensor out = at::empty({b, n, d}, x.options());
     at::Tensor out_resid = at::empty({b, n, d}, x.options());
