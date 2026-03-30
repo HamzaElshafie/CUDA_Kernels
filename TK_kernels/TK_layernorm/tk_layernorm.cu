@@ -50,7 +50,6 @@ struct norm_args {
 // Each block has NUM_WORKERS warps; each warp owns one token slot in shared memory.
 // Within a block, GROUPS_PER_TILE groups of NUM_WORKERS tokens are processed in a double-buffered loop:
 //   - while warp computes on the tic buffer, the toc buffer is prefetched from HBM.
-//   - load_async_wait<1>() waits for tic only, leaving toc in flight.
 template<int d_model>
 __global__ void __launch_bounds__(NUM_THREADS)
 layer_norm_tk(const __grid_constant__ norm_args<d_model> g) {
