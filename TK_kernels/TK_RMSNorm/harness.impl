@@ -1,0 +1,155 @@
+#include <chrono>
+#include <cmath>
+#include <cstdio>
+#include <cstring>
+#include <iostream>
+
+#define ATTN_B 4
+#define ATTN_N 1024
+#define ATTN_D 1024
+/* Must match NUM_WORKERS in tk_rms.cu (each block handles this many tokens). */
+#define N_PER_TILE 2
+#define N_TILE_SIZE (ATTN_N / N_PER_TILE)
+#define ITERS 10
+
+static void ref_rmsnorm(
+    int b, int n, int d,
+    const float *x, const float *residual, const float *weight,
+    float eps,
+    float *out_y, float *out_r
+) {
+    for (int bi = 0; bi < b; ++bi) {
+        for (int ti = 0; ti < n; ++ti) {
+            const int base = bi * n * d + ti * d;
+            float msq = 0.f;
+            for (int j = 0; j < d; ++j) {
+                float v = x[base + j] + residual[base + j];
+                out_r[base + j] = v;
+                msq += v * v;
+            }
+            msq /= (float)d;
+            float inv_rms = 1.0f / std::sqrt(msq + eps);
+            for (int j = 0; j < d; ++j) {
+                out_y[base + j] = out_r[base + j] * inv_rms * weight[j];
+            }
+        }
+    }
+}
+
+inline void __cudaCheckError(const char *file, const int line) {
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        fprintf(stderr, "CUDA error at %s:%i : %s\n", file, line, cudaGetErrorString(err));
+        std::exit(-1);
+    }
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        fprintf(stderr, "CUDA sync error at %s:%i : %s\n", file, line, cudaGetErrorString(err));
+        std::exit(-1);
+    }
+}
+#define CudaCheckError() __cudaCheckError(__FILE__, __LINE__)
+
+int main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+
+    std::cout << "TK RMSNorm harness (fused residual + RMSNorm)\n";
+
+    constexpr int TOTAL = ATTN_B * ATTN_N * ATTN_D;
+    constexpr float eps = 1e-5f;
+
+    float *x = new float[TOTAL];
+    float *residual = new float[TOTAL];
+    float *norm_weight = new float[ATTN_D];
+    float *o_ref = new float[TOTAL];
+    float *r_ref = new float[TOTAL];
+
+    for (int i = 0; i < TOTAL; ++i) {
+        x[i] = 0.01f * float((i * 17) % 100);
+        residual[i] = 0.01f * float((i * 31) % 100);
+    }
+    for (int j = 0; j < ATTN_D; ++j) {
+        norm_weight[j] = 1.0f + 0.001f * float(j);
+    }
+
+    ref_rmsnorm(ATTN_B, ATTN_N, ATTN_D, x, residual, norm_weight, eps, o_ref, r_ref);
+
+    bf16 *x_bf = new bf16[TOTAL];
+    bf16 *residual_bf = new bf16[TOTAL];
+    bf16 *weight_bf = new bf16[ATTN_D];
+    bf16 *o_bf = new bf16[TOTAL];
+    bf16 *r_bf = new bf16[TOTAL];
+
+    for (int i = 0; i < TOTAL; ++i) {
+        x_bf[i] = __float2bfloat16(x[i]);
+        residual_bf[i] = __float2bfloat16(residual[i]);
+    }
+    for (int j = 0; j < ATTN_D; ++j) {
+        weight_bf[j] = __float2bfloat16(norm_weight[j]);
+    }
+
+    bf16 *d_x, *d_residual, *d_weight, *d_o;
+    cudaMalloc(&d_x, TOTAL * sizeof(bf16));
+    cudaMalloc(&d_residual, TOTAL * sizeof(bf16));
+    cudaMalloc(&d_weight, ATTN_D * sizeof(bf16));
+    cudaMalloc(&d_o, TOTAL * sizeof(bf16));
+
+    cudaMemcpy(d_x, x_bf, TOTAL * sizeof(bf16), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_residual, residual_bf, TOTAL * sizeof(bf16), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_weight, weight_bf, ATTN_D * sizeof(bf16), cudaMemcpyHostToDevice);
+
+    for (int i = 0; i < ITERS; ++i) {
+        dispatch_rmsnorm(d_x, d_residual, d_weight, d_o, ATTN_B, ATTN_N);
+    }
+    CudaCheckError();
+
+    const auto start = std::chrono::high_resolution_clock::now();
+    for (int i = 0; i < ITERS; ++i) {
+        dispatch_rmsnorm(d_x, d_residual, d_weight, d_o, ATTN_B, ATTN_N);
+    }
+    cudaDeviceSynchronize();
+    const auto finish = std::chrono::high_resolution_clock::now();
+    CudaCheckError();
+
+    cudaMemcpy(o_bf, d_o, TOTAL * sizeof(bf16), cudaMemcpyDeviceToHost);
+    /* Kernel does not write r to global memory; approximate elementwise bf16 add for checks. */
+    for (int i = 0; i < TOTAL; ++i) {
+        r_bf[i] = __float2bfloat16(
+            __bfloat162float(x_bf[i]) + __bfloat162float(residual_bf[i]));
+    }
+
+    bool good_y = true;
+    bool good_r = true;
+    constexpr float tol = 0.15f;
+    for (int i = 0; i < TOTAL; ++i) {
+        float yo = __bfloat162float(o_bf[i]);
+        float yr = __bfloat162float(r_bf[i]);
+        if (std::fabs(yo - o_ref[i]) > tol) good_y = false;
+        if (std::fabs(yr - r_ref[i]) > tol) good_r = false;
+    }
+
+    std::cout << (good_y ? "Correct y :)\n" : "Incorrect y :(\n");
+    std::cout << (good_r ? "Correct resid :)\n" : "Incorrect resid :(\n");
+    std::cout << "Average time: "
+              << std::chrono::duration_cast<std::chrono::microseconds>(finish - start).count() / ITERS
+              << " us\n";
+
+    cudaFree(d_x);
+    cudaFree(d_residual);
+    cudaFree(d_weight);
+    cudaFree(d_o);
+
+    delete[] x;
+    delete[] residual;
+    delete[] norm_weight;
+    delete[] o_ref;
+    delete[] r_ref;
+    delete[] x_bf;
+    delete[] residual_bf;
+    delete[] weight_bf;
+    delete[] o_bf;
+    delete[] r_bf;
+
+    return (good_y && good_r) ? 0 : 1;
+}
