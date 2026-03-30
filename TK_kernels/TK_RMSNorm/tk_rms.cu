@@ -78,10 +78,10 @@ rms_norm_tk(const __grid_constant__ norm_args<d_model> g) {
     // Load phase (per token)
     warp::load_async(x_s[warp_id], g.x, {batch,0,seq_start + warp_id,0});
     warp::load_async(res_s[warp_id], g.residual, {batch,0,seq_start + warp_id,0});
+    load_async_wait();
     __syncthreads();
     
     // Compute phase (per token)
-    // 
     warp::add(res_s[warp_id], res_s[warp_id], x_s[warp_id]);
     __syncwarp();
 
@@ -91,9 +91,9 @@ rms_norm_tk(const __grid_constant__ norm_args<d_model> g) {
     warp::mul(x_s[warp_id], res_s[warp_id], res_s[warp_id]);
     warp::sum(norm_factor, x_s[warp_id]);
     norm_factor = norm_factor / fp32_to_bf16(d_model);
-    norm_factor = fp32_to_bf16(sqrt(bf16_to_fp32(norm_factor + fp32_to_bf16(g.eps))));
+    norm_factor = fp32_to_bf16(sqrt(bf16_to_fp32(norm_factor + fp32_to_bf16(g.norm_eps))));
 
-    warp::div(res_s[warp_id], res_s[warp_id], l);
+    warp::div(res_s[warp_id], res_s[warp_id], norm_factor);
     warp::mul(res_s[warp_id], res_s[warp_id], norm_weight_s);
     __syncwarp();
 
